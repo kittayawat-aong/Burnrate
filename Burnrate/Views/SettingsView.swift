@@ -30,7 +30,7 @@ struct SettingsView: View {
                         Text(item.title)
                             .font(.caption)
                     }
-                    .frame(width: 68, height: 46)
+                    .frame(width: 60, height: 46)
                     .foregroundColor(tab == item ? .accentColor : .primary)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
@@ -60,13 +60,15 @@ struct SettingsView: View {
             NotificationsTab(settings: settings)
         case .polling:
             PollingTab(settings: settings)
+        case .debug:
+            DebugTab(settings: settings)
         case .about:
             AboutTab()
         }
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case general, menuBar, popover, notifications, polling, about
+        case general, menuBar, popover, notifications, polling, debug, about
         var id: String { rawValue }
 
         var title: String {
@@ -76,6 +78,7 @@ struct SettingsView: View {
             case .popover: return "Popover"
             case .notifications: return "Notifications"
             case .polling: return "Polling"
+            case .debug: return "Debug"
             case .about: return "About"
             }
         }
@@ -87,6 +90,7 @@ struct SettingsView: View {
             case .popover: return "macwindow"
             case .notifications: return "bell"
             case .polling: return "clock.arrow.circlepath"
+            case .debug: return "ladybug"
             case .about: return "info.circle"
             }
         }
@@ -165,8 +169,17 @@ private struct NotificationsTab: View {
                         .frame(width: 40, alignment: .trailing)
                 }
                 .disabled(!settings.notifyEnabled)
+
+                Button {
+                    NotificationService.send(
+                        title: "Burnrate",
+                        body: "Test notification — notifications are working ✅"
+                    )
+                } label: {
+                    Label("Send test notification", systemImage: "bell.badge")
+                }
             } footer: {
-                captionFooter("Sends a notification once a usage window crosses the threshold.")
+                captionFooter("Sends a notification once a usage window crosses the threshold. If the test does nothing, allow Burnrate in System Settings ▸ Notifications.")
             }
         }
         .formStyle(.grouped)
@@ -189,6 +202,45 @@ private struct PollingTab: View {
                 }
             } footer: {
                 captionFooter("On rate limiting (429), Burnrate automatically backs off to 10 minutes. Changes apply from the next check.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct DebugTab: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Simulate usage", isOn: $settings.debugSimulate)
+
+                HStack {
+                    Text("Session")
+                    Slider(value: $settings.debugSessionPercent, in: 0...100, step: 1)
+                    Text("\(Int(settings.debugSessionPercent))%")
+                        .monospacedDigit()
+                        .frame(width: 40, alignment: .trailing)
+                }
+                HStack {
+                    Text("Weekly")
+                    Slider(value: $settings.debugWeeklyPercent, in: 0...100, step: 1)
+                    Text("\(Int(settings.debugWeeklyPercent))%")
+                        .monospacedDigit()
+                        .frame(width: 40, alignment: .trailing)
+                }
+
+                Button {
+                    settings.debugSimulate = true
+                    settings.debugSessionPercent = min(100, settings.debugSessionPercent + 5)
+                } label: {
+                    Label("Burn +5%", systemImage: "flame.fill")
+                }
+            } header: {
+                Text("Simulated values (no real tokens used)")
+            } footer: {
+                captionFooter("Overrides what the menu bar and popover display so you can preview colors and thresholds. Real usage is unaffected.")
             }
         }
         .formStyle(.grouped)

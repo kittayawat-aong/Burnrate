@@ -23,9 +23,12 @@ struct UsagePopover: View {
             if let error = viewModel.errorMessage, viewModel.session == nil {
                 errorState(error)
             } else {
-                periodRow(title: "Session (5h)", period: viewModel.session)
+                if let error = viewModel.errorMessage {
+                    staleNote(error)
+                }
+                periodRow(title: "Session (5h)", period: viewModel.effectiveSession)
                 if settings.popoverShowWeekly {
-                    periodRow(title: "Weekly (7d)", period: viewModel.weekly)
+                    periodRow(title: "Weekly (7d)", period: viewModel.effectiveWeekly)
                 }
 
                 if settings.popoverShowTokens, let tokens = viewModel.tokenSummary, tokens.total > 0 {
@@ -126,6 +129,19 @@ struct UsagePopover: View {
                 .fontWeight(bold ? .semibold : .regular)
         }
         .foregroundColor(bold ? .primary : .secondary)
+    }
+
+    /// Thin inline warning shown above cached values when a fetch failed.
+    private func staleNote(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.yellow)
+            Text("\(message) · showing last update")
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .font(.caption2)
+        .foregroundColor(.secondary)
     }
 
     private func errorState(_ message: String) -> some View {

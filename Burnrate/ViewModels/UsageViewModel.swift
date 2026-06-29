@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import UserNotifications
 
 /// Result of a refresh, used by the AppDelegate to decide the next poll delay.
 enum RefreshOutcome {
@@ -23,6 +22,32 @@ final class UsageViewModel: ObservableObject {
 
     /// Called after any state change so AppKit (status item) can redraw.
     var onUpdate: (() -> Void)?
+
+    init() {
+        // Restore the last successful fetch so something shows immediately,
+        // even before the first (or a failing) network call.
+        if let cached = UsageCache.load() {
+            session = UsagePeriod(utilization: cached.sessionUtilization, resetsAt: cached.sessionResetsAt)
+            weekly = UsagePeriod(utilization: cached.weeklyUtilization, resetsAt: cached.weeklyResetsAt)
+            lastUpdated = cached.lastUpdated
+        }
+    }
+
+    // MARK: - Display values (apply the debug simulation override if enabled)
+
+    var effectiveSession: UsagePeriod? {
+        debugApplied(session, percent: AppSettings.shared.debugSessionPercent)
+    }
+
+    var effectiveWeekly: UsagePeriod? {
+        debugApplied(weekly, percent: AppSettings.shared.debugWeeklyPercent)
+    }
+
+    private func debugApplied(_ period: UsagePeriod?, percent: Double) -> UsagePeriod? {
+        guard AppSettings.shared.debugSimulate else { return period }
+        let resets = period?.resetsAt ?? Date().addingTimeInterval(2 * 3600)
+        return UsagePeriod(utilization: percent, resetsAt: resets)
+    }
 
     /// Set by the AppDelegate when it schedules the next poll.
     func setNextUpdate(_ date: Date) {
@@ -65,10 +90,13 @@ final class UsageViewModel: ObservableObject {
             lastUpdated = Date()
             errorMessage = nil
 
+            // Persist so values survive relaunch and remain visible on later failures.
+            UsageCache.save(session: usage.session, weekly: usage.weekly, lastUpdated: lastUpdated!)
+
             // Phase 2: local token breakdown (best effort).
             tokenSummary = JournalService.summarize()
 
-            checkThresholds(usage)
+            runThresholdCheck()
             return .success
         } catch UsageAPIError.rateLimited {
             errorMessage = "Rate limited (429) — backing off"
@@ -88,27 +116,30 @@ final class UsageViewModel: ObservableObject {
 
     // MARK: - Threshold notifications (Phase 2)
 
-    private func checkThresholds(_ usage: UsageResponse) {
+    /// Evaluate thresholds against the *displayed* values (so the debug
+    /// simulator triggers alerts too). Safe to call often — it only fires on
+    /// a fresh crossing of the threshold.
+    func runThresholdCheck() {
         notifiedSession = evaluate(
             window: "Session (5h)",
-            utilization: usage.session.utilization,
+            utilization: effectiveSession?.utilization,
             alreadyNotified: notifiedSession
         )
         notifiedWeekly = evaluate(
             window: "Weekly (7d)",
-            utilization: usage.weekly.utilization,
+            utilization: effectiveWeekly?.utilization,
             alreadyNotified: notifiedWeekly
         )
     }
 
     /// Returns the new "already notified" flag for the window.
-    private func evaluate(window: String, utilization: Double, alreadyNotified: Bool) -> Bool {
+    private func evaluate(window: String, utilization: Double?, alreadyNotified: Bool) -> Bool {
         let settings = AppSettings.shared
-        guard settings.notifyEnabled else { return false }
+        guard settings.notifyEnabled, let utilization else { return false }
 
         if utilization >= settings.notifyThreshold {
             if !alreadyNotified {
-                sendNotification(
+                NotificationService.send(
                     title: "Claude usage high",
                     body: "\(window) is at \(Int(utilization))%."
                 )
@@ -117,21 +148,5 @@ final class UsageViewModel: ObservableObject {
         }
         // Reset once we drop back under the threshold so the next spike re-alerts.
         return false
-    }
-
-    private func sendNotification(title: String, body: String) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            guard granted else { return }
-            let content = UNMutableNotificationContent()
-            content.title = title
-            content.body = body
-            content.sound = .default
-            let request = UNNotificationRequest(
-                identifier: UUID().uuidString,
-                content: content,
-                trigger: nil
-            )
-            UNUserNotificationCenter.current().add(request)
-        }
     }
 }

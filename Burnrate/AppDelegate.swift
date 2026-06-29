@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -31,10 +32,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.updateStatusItem()
         }
 
-        // Re-render the menu bar when display preferences change.
+        // Show notifications even while Burnrate is the active app, then ask
+        // for permission up front.
+        UNUserNotificationCenter.current().delegate = self
+        NotificationService.requestAuthorization()
+
+        // React to display/preference changes: redraw the menu bar and
+        // re-evaluate notification thresholds (so the debug simulator alerts).
         settings.objectWillChange
             .sink { [weak self] in
-                DispatchQueue.main.async { self?.updateStatusItem() }
+                DispatchQueue.main.async {
+                    self?.updateStatusItem()
+                    self?.viewModel.runThresholdCheck()
+                }
             }
             .store(in: &cancellables)
 
@@ -105,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A leading space gives the flame icon a little breathing room.
         let title = NSMutableAttributedString(string: " ")
 
-        if let session = viewModel.session {
+        if let session = viewModel.effectiveSession {
             // Session: percentage (traffic-light colored) and/or reset countdown.
             if settings.menuBarShowSession {
                 title.append(segment("\(Int(session.utilization))%", color: UsageColor.nsColor(for: session.utilization)))
@@ -116,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        if settings.menuBarShowWeekly, let weekly = viewModel.weekly {
+        if settings.menuBarShowWeekly, let weekly = viewModel.effectiveWeekly {
             if title.length > 1 { title.append(NSAttributedString(string: "  ")) }
             title.append(segment("📅", color: .secondaryLabelColor))
             title.append(segment("\(Int(weekly.utilization))%", color: UsageColor.nsColor(for: weekly.utilization)))
@@ -124,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Nothing to show (no data yet, or all toggles off with no data).
         if title.length <= 1 {
-            if viewModel.session == nil && viewModel.weekly == nil {
+            if viewModel.effectiveSession == nil && viewModel.effectiveWeekly == nil {
                 let symbol = viewModel.errorMessage != nil && !viewModel.isLoading ? "⚠︎" : "…"
                 title.append(segment(symbol, color: .secondaryLabelColor))
             }
@@ -239,5 +249,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.poll()
             }
         }
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    // Present banners/sound even when Burnrate is the foreground app.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .list])
     }
 }

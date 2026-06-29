@@ -26,6 +26,11 @@ final class AppSettings: ObservableObject {
     // Polling
     @Published var pollIntervalMinutes: Int { didSet { defaults.set(pollIntervalMinutes, forKey: Keys.pollIntervalMinutes) } }
 
+    // Debug / simulation (throwaway play feature — does not touch real quota)
+    @Published var debugSimulate: Bool { didSet { defaults.set(debugSimulate, forKey: Keys.debugSimulate) } }
+    @Published var debugSessionPercent: Double { didSet { defaults.set(debugSessionPercent, forKey: Keys.debugSessionPercent) } }
+    @Published var debugWeeklyPercent: Double { didSet { defaults.set(debugWeeklyPercent, forKey: Keys.debugWeeklyPercent) } }
+
     private init() {
         let store = UserDefaults.standard
         func bool(_ key: String, default fallback: Bool) -> Bool {
@@ -47,6 +52,9 @@ final class AppSettings: ObservableObject {
         notifyEnabled = bool(Keys.notifyEnabled, default: true)
         notifyThreshold = double(Keys.notifyThreshold, default: 80)
         pollIntervalMinutes = int(Keys.pollIntervalMinutes, default: 5)
+        debugSimulate = bool(Keys.debugSimulate, default: false)
+        debugSessionPercent = double(Keys.debugSessionPercent, default: 40)
+        debugWeeklyPercent = double(Keys.debugWeeklyPercent, default: 15)
     }
 
     private enum Keys {
@@ -59,6 +67,9 @@ final class AppSettings: ObservableObject {
         static let notifyEnabled = "notifyEnabled"
         static let notifyThreshold = "notifyThreshold"
         static let pollIntervalMinutes = "pollIntervalMinutes"
+        static let debugSimulate = "debugSimulate"
+        static let debugSessionPercent = "debugSessionPercent"
+        static let debugWeeklyPercent = "debugWeeklyPercent"
     }
 }
 
