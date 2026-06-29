@@ -1,6 +1,7 @@
 # 🔥 Burnrate
+**Claude Code Usage Monitor for macOS**
 
-A macOS menu bar app that shows your [Claude Code](https://claude.ai/code) usage at a glance — session %, reset countdown, and token breakdown.
+A menu bar app that shows your [Claude Code](https://claude.ai/code) usage at a glance — session %, reset countdown, and token breakdown.
 
 ![Burnrate popover](screenshot/SCR-20260630-bplp.png)
 
