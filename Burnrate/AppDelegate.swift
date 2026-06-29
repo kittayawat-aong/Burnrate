@@ -51,6 +51,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateStatusItem()
         poll() // initial fetch (also schedules the next poll)
         startDisplayTimer()
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(didWakeFromSleep),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -58,6 +65,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         displayTimer?.invalidate()
         popoverTickTimer?.invalidate()
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
+    }
+
+    @objc private func didWakeFromSleep() {
+        // Cancel whatever stale timer remained and fetch immediately.
+        pollTimer?.invalidate()
+        poll()
     }
 
     /// Re-renders the menu bar every minute so the reset countdown ticks down

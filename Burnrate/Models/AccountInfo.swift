@@ -24,20 +24,20 @@ struct AccountInfo {
             if let value, !value.isEmpty { rows.append((label, value)) }
         }
 
-        add("Name", displayName)
+//        add("Name", displayName)
         add("Email", email)
         add("Plan", plan)
-        add("Organization", organizationName)
-        add("Role", organizationRole?.capitalized)
-        add("Rate tier", rateLimitTier)
-        add("Billing", billingType)
+//        add("Organization", organizationName)
+//        add("Role", organizationRole?.capitalized)
+//        add("Rate tier", rateLimitTier)
+//        add("Billing", billingType)
         if let extra = hasExtraUsageEnabled {
             add("Extra usage", extra ? "Enabled" : "Disabled")
         }
-        add("Account created", accountCreatedAt.map(Self.formatDate))
-        add("Subscribed", subscriptionCreatedAt.map(Self.formatDate))
-        add("Account ID", accountUuid)
-        add("Org ID", organizationUuid)
+//        add("Account created", accountCreatedAt.map(Self.formatDate))
+//        add("Subscribed", subscriptionCreatedAt.map(Self.formatDate))
+//        add("Account ID", accountUuid)
+//        add("Org ID", organizationUuid)
         return rows
     }
 

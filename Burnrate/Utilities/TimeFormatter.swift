@@ -51,10 +51,10 @@ enum TimeFormatter {
         return formatter.string(from: date)
     }
 
-    /// "Jul 3, 5:00 AM".
+    /// "Thu, Jul 3, 5:00 AM".
     static func resetDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, h:mm a"
+        formatter.dateFormat = "EEE, MMM d, h:mm a"
         return formatter.string(from: date)
     }
 
