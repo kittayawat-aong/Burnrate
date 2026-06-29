@@ -13,7 +13,10 @@ A macOS menu bar app that shows your [Claude Code](https://claude.ai/code) usage
 - **Notifications** — alert when usage crosses a configurable threshold; works even when the app is in the foreground
 - **Persists last fetch** — shows cached values on 429 / offline with a stale warning
 - **Refreshes on wake** — polls immediately when the Mac wakes from sleep
-- **Settings** — 6-tab window: toggle what shows in the menu bar / popover, adjust poll interval, configure notifications
+- **Webhook** — POST JSON payload to any URL after each successful fetch (Make, n8n, Zapier, custom server)
+- **Smart notifications** — threshold alert fires once per usage period; separate alert when session or weekly resets
+- **Auto-refresh on reset** — schedules a timer to poll exactly when a period expires, not just on the regular interval
+- **Settings** — 7-tab window: toggle what shows in the menu bar / popover, adjust poll interval, configure notifications and webhook
 - **Debug tab** — simulate usage % for testing UI and notifications without burning real quota
 
 ## Requirements
@@ -53,6 +56,7 @@ On first launch macOS may prompt to allow access to the `Claude Code-credentials
 | Popover | Show account info, weekly usage, token breakdown |
 | Notifications | Enable alerts, set threshold % |
 | Polling | Poll interval (1–30 min) |
+| Webhook | URL, enable/disable, payload preview |
 | Debug | Simulate session / weekly % for UI testing |
 
 ## Project layout
@@ -71,6 +75,7 @@ Burnrate/
 │   ├── AccountService.swift   # parses ~/.claude.json
 │   ├── JournalService.swift   # parses ~/.claude/projects/**/*.jsonl
 │   ├── NotificationService.swift
+│   ├── WebhookService.swift    # POST usage payload to configurable URL
 │   └── UsageCache.swift       # UserDefaults persistence
 ├── ViewModels/
 │   ├── UsageViewModel.swift
@@ -82,6 +87,25 @@ Burnrate/
     ├── TimeFormatter.swift
     └── UsageColor.swift
 ```
+
+## Webhook payload
+
+When enabled, Burnrate sends a `POST` with `Content-Type: application/json` after every successful fetch. Timestamp is UTC+0.
+
+```json
+{
+  "timestamp": "2026-06-30T00:40:00Z",
+  "session": { "utilization": 87.0, "resets_at": "2026-06-30T02:00:00Z" },
+  "weekly":  { "utilization": 21.0, "resets_at": "2026-07-03T05:00:00Z" },
+  "tokens":  {
+    "input": 79, "output": 17950,
+    "cache_write": 152315, "cache_read": 2192857,
+    "total": 2363201
+  }
+}
+```
+
+Compatible with Make, n8n, Zapier, or any HTTP endpoint.
 
 ## Notes
 
