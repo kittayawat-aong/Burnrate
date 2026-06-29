@@ -3,11 +3,11 @@ import SwiftUI
 /// SwiftUI content shown inside the NSPopover.
 struct UsagePopover: View {
     @ObservedObject var viewModel: UsageViewModel
+    @ObservedObject var settings: AppSettings
 
     var onRefresh: () -> Void
+    var onOpenSettings: () -> Void
     var onQuit: () -> Void
-
-    @State private var launchAtLogin = LaunchAtLogin.isEnabled
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -15,7 +15,7 @@ struct UsagePopover: View {
 
             Divider()
 
-            if let account = viewModel.account {
+            if settings.popoverShowAccount, let account = viewModel.account {
                 accountSection(account)
                 Divider()
             }
@@ -24,9 +24,11 @@ struct UsagePopover: View {
                 errorState(error)
             } else {
                 periodRow(title: "Session (5h)", period: viewModel.session)
-                periodRow(title: "Weekly (7d)", period: viewModel.weekly)
+                if settings.popoverShowWeekly {
+                    periodRow(title: "Weekly (7d)", period: viewModel.weekly)
+                }
 
-                if let tokens = viewModel.tokenSummary, tokens.total > 0 {
+                if settings.popoverShowTokens, let tokens = viewModel.tokenSummary, tokens.total > 0 {
                     Divider()
                     tokenBreakdown(tokens)
                 }
@@ -137,36 +139,29 @@ struct UsagePopover: View {
     }
 
     private var footer: some View {
-        VStack(spacing: 10) {
-            Toggle("Launch at login", isOn: $launchAtLogin)
-                .toggleStyle(.checkbox)
-                .font(.caption)
-                .onChange(of: launchAtLogin) { newValue in
-                    if !LaunchAtLogin.set(newValue) {
-                        // Revert if the system rejected the change.
-                        launchAtLogin = LaunchAtLogin.isEnabled
-                    }
-                }
-
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(updatedText)
-                    Text(nextUpdateText)
-                }
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                Spacer()
-                Button(action: onRefresh) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .help("Refresh now")
-                Button(action: onQuit) {
-                    Image(systemName: "power")
-                }
-                .buttonStyle(.borderless)
-                .help("Quit Burnrate")
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(updatedText)
+                Text(nextUpdateText)
             }
+            .font(.caption2)
+            .foregroundColor(.secondary)
+            Spacer()
+            Button(action: onRefresh) {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("Refresh now")
+            Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .help("Settings")
+            Button(action: onQuit) {
+                Image(systemName: "power")
+            }
+            .buttonStyle(.borderless)
+            .help("Quit Burnrate")
         }
     }
 

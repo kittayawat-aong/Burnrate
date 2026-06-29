@@ -13,7 +13,8 @@ struct BurnrateApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        // No main window — this is a menu-bar-only (agent) app.
+        // No main window — this is a menu-bar-only (agent) app. The settings
+        // window is managed directly by AppDelegate, so this scene stays empty.
         Settings {
             EmptyView()
         }

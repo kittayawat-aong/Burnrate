@@ -103,7 +103,10 @@ final class UsageViewModel: ObservableObject {
 
     /// Returns the new "already notified" flag for the window.
     private func evaluate(window: String, utilization: Double, alreadyNotified: Bool) -> Bool {
-        if utilization > 80 {
+        let settings = AppSettings.shared
+        guard settings.notifyEnabled else { return false }
+
+        if utilization >= settings.notifyThreshold {
             if !alreadyNotified {
                 sendNotification(
                     title: "Claude usage high",

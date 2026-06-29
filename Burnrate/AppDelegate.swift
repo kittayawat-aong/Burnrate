@@ -1,18 +1,23 @@
 import AppKit
 import SwiftUI
+import Combine
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private let viewModel = UsageViewModel()
+    private let settings = AppSettings.shared
 
     private var pollTimer: Timer?
     private var displayTimer: Timer?
     private var popoverTickTimer: Timer?
     private var eventMonitor: Any?
+    private var cancellables = Set<AnyCancellable>()
+    private var settingsWindow: NSWindow?
 
-    private let normalInterval: TimeInterval = 5 * 60   // 5 minutes
+    /// Normal poll interval, from user settings (clamped to a sane minimum).
+    private var normalInterval: TimeInterval { TimeInterval(max(1, settings.pollIntervalMinutes) * 60) }
     private let backoffInterval: TimeInterval = 10 * 60 // 10 minutes on 429
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -25,6 +30,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel.onUpdate = { [weak self] in
             self?.updateStatusItem()
         }
+
+        // Re-render the menu bar when display preferences change.
+        settings.objectWillChange
+            .sink { [weak self] in
+                DispatchQueue.main.async { self?.updateStatusItem() }
+            }
+            .store(in: &cancellables)
 
         updateStatusItem()
         poll() // initial fetch (also schedules the next poll)
@@ -77,7 +89,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.animates = true
         let content = UsagePopover(
             viewModel: viewModel,
+            settings: settings,
             onRefresh: { [weak self] in self?.poll() },
+            onOpenSettings: { [weak self] in self?.openSettings() },
             onQuit: { NSApp.terminate(nil) }
         )
         popover.contentViewController = NSHostingController(rootView: content)
@@ -92,14 +106,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let title = NSMutableAttributedString(string: " ")
 
         if let session = viewModel.session {
-            // Session percentage (traffic-light colored) + time until reset.
-            title.append(segment("\(Int(session.utilization))%", color: UsageColor.nsColor(for: session.utilization)))
-            if let resetsAt = session.resetsAt {
-                title.append(segment(" · \(TimeFormatter.compactCountdown(to: resetsAt))", color: .secondaryLabelColor))
+            // Session: percentage (traffic-light colored) and/or reset countdown.
+            if settings.menuBarShowSession {
+                title.append(segment("\(Int(session.utilization))%", color: UsageColor.nsColor(for: session.utilization)))
             }
-        } else {
-            let symbol = viewModel.errorMessage != nil && !viewModel.isLoading ? "⚠︎" : "…"
-            title.append(segment(symbol, color: .secondaryLabelColor))
+            if settings.menuBarShowCountdown, let resetsAt = session.resetsAt {
+                let prefix = settings.menuBarShowSession ? " · " : ""
+                title.append(segment(prefix + TimeFormatter.compactCountdown(to: resetsAt), color: .secondaryLabelColor))
+            }
+        }
+
+        if settings.menuBarShowWeekly, let weekly = viewModel.weekly {
+            if title.length > 1 { title.append(NSAttributedString(string: "  ")) }
+            title.append(segment("📅", color: .secondaryLabelColor))
+            title.append(segment("\(Int(weekly.utilization))%", color: UsageColor.nsColor(for: weekly.utilization)))
+        }
+
+        // Nothing to show (no data yet, or all toggles off with no data).
+        if title.length <= 1 {
+            if viewModel.session == nil && viewModel.weekly == nil {
+                let symbol = viewModel.errorMessage != nil && !viewModel.isLoading ? "⚠︎" : "…"
+                title.append(segment(symbol, color: .secondaryLabelColor))
+            }
         }
 
         button.attributedTitle = title
@@ -171,6 +199,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSEvent.removeMonitor(eventMonitor)
             self.eventMonitor = nil
         }
+    }
+
+    // MARK: - Settings window
+
+    private func openSettings() {
+        closePopover()
+
+        if settingsWindow == nil {
+            let hosting = NSHostingController(rootView: SettingsView(settings: settings))
+            let window = NSWindow(contentViewController: hosting)
+            window.title = "Burnrate Settings"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        settingsWindow?.orderFrontRegardless()
     }
 
     // MARK: - Polling
