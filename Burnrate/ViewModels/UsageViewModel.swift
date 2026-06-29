@@ -59,9 +59,11 @@ final class UsageViewModel: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Tracks whether we already alerted for the current >80% episode, per window.
-    private var notifiedSession = false
-    private var notifiedWeekly = false
+    // The resetsAt date of the period we last sent a threshold alert for.
+    // Nil = no alert sent yet. Changes to a new date when the period resets,
+    // which automatically allows a fresh alert for the new period.
+    private var notifiedSessionPeriod: Date?
+    private var notifiedWeeklyPeriod: Date?
 
     func refresh() async -> RefreshOutcome {
         isLoading = true
@@ -71,7 +73,6 @@ final class UsageViewModel: ObservableObject {
             notifyUpdate()
         }
 
-        // Account info rarely changes — load it once.
         if account == nil {
             account = AccountService.loadAccount()
         }
@@ -84,19 +85,37 @@ final class UsageViewModel: ObservableObject {
                 return .tokenExpired
             }
 
+            // Capture old reset dates before overwriting.
+            let prevSessionResetsAt = session?.resetsAt
+            let prevWeeklyResetsAt  = weekly?.resetsAt
+
             let usage = try await UsageAPIService.fetchUsage(accessToken: credentials.accessToken)
             session = usage.session
-            weekly = usage.weekly
+            weekly  = usage.weekly
             lastUpdated = Date()
             errorMessage = nil
 
-            // Persist so values survive relaunch and remain visible on later failures.
             UsageCache.save(session: usage.session, weekly: usage.weekly, lastUpdated: lastUpdated!)
-
-            // Phase 2: local token breakdown (best effort).
             tokenSummary = JournalService.summarize()
 
+            // Detect period resets (new resetsAt is meaningfully later than the old one).
+            if periodDidReset(prev: prevSessionResetsAt, next: usage.session.resetsAt) {
+                notifiedSessionPeriod = nil
+                NotificationService.send(
+                    title: "Session reset",
+                    body: "Your 5-hour Claude session has reset — you're back to 0%."
+                )
+            }
+            if periodDidReset(prev: prevWeeklyResetsAt, next: usage.weekly.resetsAt) {
+                notifiedWeeklyPeriod = nil
+                NotificationService.send(
+                    title: "Weekly reset",
+                    body: "Your 7-day Claude usage has reset — you're back to 0%."
+                )
+            }
+
             runThresholdCheck()
+            WebhookService.send(session: usage.session, weekly: usage.weekly, tokens: tokenSummary)
             return .success
         } catch UsageAPIError.rateLimited {
             errorMessage = "Rate limited (429) — backing off"
@@ -114,39 +133,44 @@ final class UsageViewModel: ObservableObject {
         onUpdate?()
     }
 
-    // MARK: - Threshold notifications (Phase 2)
+    // MARK: - Threshold notifications
 
-    /// Evaluate thresholds against the *displayed* values (so the debug
-    /// simulator triggers alerts too). Safe to call often — it only fires on
-    /// a fresh crossing of the threshold.
+    /// Fires a threshold alert at most once per usage period (identified by resetsAt).
+    /// Call only after a successful fetch — not on every settings change.
     func runThresholdCheck() {
-        notifiedSession = evaluate(
+        let settings = AppSettings.shared
+        guard settings.notifyEnabled else { return }
+
+        checkThreshold(
             window: "Session (5h)",
-            utilization: effectiveSession?.utilization,
-            alreadyNotified: notifiedSession
+            period: effectiveSession,
+            notifiedPeriod: &notifiedSessionPeriod
         )
-        notifiedWeekly = evaluate(
+        checkThreshold(
             window: "Weekly (7d)",
-            utilization: effectiveWeekly?.utilization,
-            alreadyNotified: notifiedWeekly
+            period: effectiveWeekly,
+            notifiedPeriod: &notifiedWeeklyPeriod
         )
     }
 
-    /// Returns the new "already notified" flag for the window.
-    private func evaluate(window: String, utilization: Double?, alreadyNotified: Bool) -> Bool {
+    private func checkThreshold(window: String, period: UsagePeriod?, notifiedPeriod: inout Date?) {
         let settings = AppSettings.shared
-        guard settings.notifyEnabled, let utilization else { return false }
+        guard let utilization = period?.utilization,
+              utilization >= settings.notifyThreshold else { return }
 
-        if utilization >= settings.notifyThreshold {
-            if !alreadyNotified {
-                NotificationService.send(
-                    title: "Claude usage high",
-                    body: "\(window) is at \(Int(utilization))%."
-                )
-            }
-            return true
-        }
-        // Reset once we drop back under the threshold so the next spike re-alerts.
-        return false
+        let periodKey = period?.resetsAt ?? .distantFuture
+        guard notifiedPeriod != periodKey else { return }
+
+        NotificationService.send(
+            title: "Claude usage high",
+            body: "\(window) is at \(Int(utilization))%."
+        )
+        notifiedPeriod = periodKey
+    }
+
+    /// Returns true when the period has rolled over to a new window.
+    private func periodDidReset(prev: Date?, next: Date?) -> Bool {
+        guard let prev, let next else { return false }
+        return next.timeIntervalSince(prev) > 60
     }
 }

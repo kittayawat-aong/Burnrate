@@ -26,6 +26,10 @@ final class AppSettings: ObservableObject {
     // Polling
     @Published var pollIntervalMinutes: Int { didSet { defaults.set(pollIntervalMinutes, forKey: Keys.pollIntervalMinutes) } }
 
+    // Webhook
+    @Published var webhookEnabled: Bool { didSet { defaults.set(webhookEnabled, forKey: Keys.webhookEnabled) } }
+    @Published var webhookURL: String { didSet { defaults.set(webhookURL, forKey: Keys.webhookURL) } }
+
     // Debug / simulation (throwaway play feature — does not touch real quota)
     @Published var debugSimulate: Bool { didSet { defaults.set(debugSimulate, forKey: Keys.debugSimulate) } }
     @Published var debugSessionPercent: Double { didSet { defaults.set(debugSessionPercent, forKey: Keys.debugSessionPercent) } }
@@ -52,6 +56,8 @@ final class AppSettings: ObservableObject {
         notifyEnabled = bool(Keys.notifyEnabled, default: true)
         notifyThreshold = double(Keys.notifyThreshold, default: 80)
         pollIntervalMinutes = int(Keys.pollIntervalMinutes, default: 5)
+        webhookEnabled = bool(Keys.webhookEnabled, default: false)
+        webhookURL = store.string(forKey: Keys.webhookURL) ?? ""
         debugSimulate = bool(Keys.debugSimulate, default: false)
         debugSessionPercent = double(Keys.debugSessionPercent, default: 40)
         debugWeeklyPercent = double(Keys.debugWeeklyPercent, default: 15)
@@ -67,6 +73,8 @@ final class AppSettings: ObservableObject {
         static let notifyEnabled = "notifyEnabled"
         static let notifyThreshold = "notifyThreshold"
         static let pollIntervalMinutes = "pollIntervalMinutes"
+        static let webhookEnabled = "webhookEnabled"
+        static let webhookURL = "webhookURL"
         static let debugSimulate = "debugSimulate"
         static let debugSessionPercent = "debugSessionPercent"
         static let debugWeeklyPercent = "debugWeeklyPercent"

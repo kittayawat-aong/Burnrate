@@ -30,7 +30,7 @@ struct SettingsView: View {
                         Text(item.title)
                             .font(.caption)
                     }
-                    .frame(width: 60, height: 46)
+                    .frame(width: 52, height: 46)
                     .foregroundColor(tab == item ? .accentColor : .primary)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
@@ -60,6 +60,8 @@ struct SettingsView: View {
             NotificationsTab(settings: settings)
         case .polling:
             PollingTab(settings: settings)
+        case .webhook:
+            WebhookTab(settings: settings)
         case .debug:
             DebugTab(settings: settings)
         case .about:
@@ -68,7 +70,7 @@ struct SettingsView: View {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case general, menuBar, popover, notifications, polling, debug, about
+        case general, menuBar, popover, notifications, polling, webhook, debug, about
         var id: String { rawValue }
 
         var title: String {
@@ -78,6 +80,7 @@ struct SettingsView: View {
             case .popover: return "Popover"
             case .notifications: return "Notifications"
             case .polling: return "Polling"
+            case .webhook: return "Webhook"
             case .debug: return "Debug"
             case .about: return "About"
             }
@@ -90,6 +93,7 @@ struct SettingsView: View {
             case .popover: return "macwindow"
             case .notifications: return "bell"
             case .polling: return "clock.arrow.circlepath"
+            case .webhook: return "antenna.radiowaves.left.and.right"
             case .debug: return "ladybug"
             case .about: return "info.circle"
             }
@@ -244,6 +248,51 @@ private struct DebugTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct WebhookTab: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Send webhook on each fetch", isOn: $settings.webhookEnabled)
+
+                HStack {
+                    Text("URL")
+                    TextField("https://example.com/hook", text: $settings.webhookURL)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(!settings.webhookEnabled)
+                }
+            } footer: {
+                captionFooter("Sends a POST request with JSON after every successful fetch. Timestamp is UTC+0.")
+            }
+
+            Section("Payload example") {
+                Text(examplePayload)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var examplePayload: String {
+"""
+{
+  "timestamp": "2026-06-30T00:40:00Z",
+  "session": { "utilization": 87.0,
+               "resets_at": "2026-06-30T02:00:00Z" },
+  "weekly":  { "utilization": 21.0,
+               "resets_at": "2026-07-03T05:00:00Z" },
+  "tokens":  { "input": 79, "output": 17950,
+               "cache_write": 152315,
+               "cache_read": 2192857,
+               "total": 2363201 }
+}
+"""
     }
 }
 

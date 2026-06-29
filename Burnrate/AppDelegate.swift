@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pollTimer: Timer?
     private var displayTimer: Timer?
     private var popoverTickTimer: Timer?
+    private var resetTimer: Timer?
     private var eventMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: NSWindow?
@@ -43,7 +44,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] in
                 DispatchQueue.main.async {
                     self?.updateStatusItem()
-                    self?.viewModel.runThresholdCheck()
                 }
             }
             .store(in: &cancellables)
@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pollTimer?.invalidate()
         displayTimer?.invalidate()
         popoverTickTimer?.invalidate()
+        resetTimer?.invalidate()
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
     }
 
@@ -251,7 +252,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let outcome = await viewModel.refresh()
             let next: TimeInterval = (outcome == .rateLimited) ? backoffInterval : normalInterval
             scheduleNext(after: next)
+            if outcome == .success {
+                scheduleResetTimer()
+            }
         }
+    }
+
+    /// Fires a one-shot timer exactly when the soonest period resets,
+    /// so the data refreshes right at the boundary instead of waiting
+    /// for the next regular poll interval.
+    private func scheduleResetTimer() {
+        resetTimer?.invalidate()
+        resetTimer = nil
+
+        let dates = [viewModel.session?.resetsAt, viewModel.weekly?.resetsAt].compactMap { $0 }
+        guard let soonest = dates.min(), soonest.timeIntervalSinceNow > 0 else { return }
+
+        resetTimer = Timer(fire: soonest, interval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.poll()
+            }
+        }
+        RunLoop.main.add(resetTimer!, forMode: .common)
     }
 
     private func scheduleNext(after interval: TimeInterval) {
