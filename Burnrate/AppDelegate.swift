@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var pollTimer: Timer?
     private var displayTimer: Timer?
+    private var popoverTickTimer: Timer?
     private var eventMonitor: Any?
 
     private let normalInterval: TimeInterval = 5 * 60   // 5 minutes
@@ -33,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         pollTimer?.invalidate()
         displayTimer?.invalidate()
+        popoverTickTimer?.invalidate()
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
     }
 
@@ -143,6 +145,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
 
+        // Tick the popover every second so countdowns update live while open.
+        // Added in .common mode so it keeps firing during UI tracking.
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.viewModel.tick()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        popoverTickTimer = timer
+
         // Close the popover when the user clicks elsewhere.
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -153,6 +165,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func closePopover() {
         popover.performClose(nil)
+        popoverTickTimer?.invalidate()
+        popoverTickTimer = nil
         if let eventMonitor {
             NSEvent.removeMonitor(eventMonitor)
             self.eventMonitor = nil
@@ -170,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func scheduleNext(after interval: TimeInterval) {
+        viewModel.setNextUpdate(Date().addingTimeInterval(interval))
         pollTimer?.invalidate()
         pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {

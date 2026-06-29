@@ -26,6 +26,31 @@ enum TimeFormatter {
         countdown(to: date).replacingOccurrences(of: " ", with: "")
     }
 
+    /// Countdown including seconds: "4m 32s", "58s", "1h 05m 10s", or "now".
+    static func countdownWithSeconds(to date: Date) -> String {
+        let total = Int(date.timeIntervalSinceNow.rounded())
+        if total <= 0 { return "now" }
+
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+
+        if hours > 0 {
+            return String(format: "%dh %02dm %02ds", hours, minutes, seconds)
+        }
+        if minutes > 0 {
+            return String(format: "%dm %02ds", minutes, seconds)
+        }
+        return "\(seconds)s"
+    }
+
+    /// "10:47:05 AM".
+    static func clockWithSeconds(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm:ss a"
+        return formatter.string(from: date)
+    }
+
     /// "Jul 3, 5:00 AM".
     static func resetDate(_ date: Date) -> String {
         let formatter = DateFormatter()

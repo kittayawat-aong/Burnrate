@@ -15,12 +15,24 @@ final class UsageViewModel: ObservableObject {
     @Published private(set) var session: UsagePeriod?
     @Published private(set) var weekly: UsagePeriod?
     @Published private(set) var tokenSummary: TokenSummary?
+    @Published private(set) var account: AccountInfo?
     @Published private(set) var lastUpdated: Date?
+    @Published private(set) var nextUpdate: Date?
     @Published private(set) var errorMessage: String?
     @Published private(set) var isLoading = false
 
     /// Called after any state change so AppKit (status item) can redraw.
     var onUpdate: (() -> Void)?
+
+    /// Set by the AppDelegate when it schedules the next poll.
+    func setNextUpdate(_ date: Date) {
+        nextUpdate = date
+    }
+
+    /// Forces observing views to re-render (used to tick live countdowns).
+    func tick() {
+        objectWillChange.send()
+    }
 
     /// Tracks whether we already alerted for the current >80% episode, per window.
     private var notifiedSession = false
@@ -32,6 +44,11 @@ final class UsageViewModel: ObservableObject {
         defer {
             isLoading = false
             notifyUpdate()
+        }
+
+        // Account info rarely changes — load it once.
+        if account == nil {
+            account = AccountService.loadAccount()
         }
 
         do {
