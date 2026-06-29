@@ -9,9 +9,13 @@ import SwiftUI
 
 @main
 struct BurnrateApp: App {
+    // The status bar item, popover, and polling all live in AppDelegate.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        // No main window — this is a menu-bar-only (agent) app.
+        Settings {
+            EmptyView()
         }
     }
 }
