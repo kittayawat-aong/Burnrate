@@ -1,81 +1,93 @@
-# Burnrate
+# 🔥 Burnrate
 
-A macOS status bar app that shows your Claude Code usage in real time. It reads
-the OAuth token Claude Code stores in your Keychain, polls Anthropic's
-(undocumented) `/api/oauth/usage` endpoint, and parses local JSONL logs for a
-token breakdown.
+A macOS menu bar app that shows your [Claude Code](https://claude.ai/code) usage at a glance — session %, reset countdown, and token breakdown.
 
-> Built per `PLAN_claude_usage_statusbar.md`.
+![Burnrate popover](screenshot/SCR-20260630-bplp.png)
+
+---
+
+## Features
+
+- **Menu bar** — flame icon + session % (traffic-light colored) + countdown to reset
+- **Popover** — session & weekly progress bars with reset times (day of week), today's token breakdown, account info
+- **Notifications** — alert when usage crosses a configurable threshold; works even when the app is in the foreground
+- **Persists last fetch** — shows cached values on 429 / offline with a stale warning
+- **Refreshes on wake** — polls immediately when the Mac wakes from sleep
+- **Settings** — 6-tab window: toggle what shows in the menu bar / popover, adjust poll interval, configure notifications
+- **Debug tab** — simulate usage % for testing UI and notifications without burning real quota
 
 ## Requirements
 
 - macOS 13 Ventura or later
-- Xcode
-- Claude Code logged in (so credentials exist in the Keychain under the
-  `Claude Code-credentials` service)
+- [Claude Code](https://claude.ai/code) installed and signed in
 
-## Build & run
+## Installation
 
-Open `Burnrate.xcodeproj` in Xcode and press **Run** (⌘R), or from the CLI:
+Build from source:
 
 ```bash
-xcodebuild -project Burnrate.xcodeproj -scheme Burnrate -configuration Release build
+git clone https://github.com/yourname/burnrate.git
+cd burnrate
+xcodebuild -scheme Burnrate -configuration Release -derivedDataPath build/release build
+cp -R build/release/Build/Products/Release/Burnrate.app /Applications/
+open /Applications/Burnrate.app
 ```
 
-The app is a menu-bar agent (`LSUIElement = YES`) — it has no Dock icon and no
-main window; look for the icon in the menu bar.
+On first launch macOS may prompt to allow access to the `Claude Code-credentials` Keychain item — choose **Always Allow**.
 
-> **App Sandbox is disabled** for this target. It must be: a sandboxed app
-> cannot read Claude Code's Keychain item (it belongs to another app's keychain
-> group) and cannot read `~/.claude/projects/**` (the sandbox redirects the home
-> directory to a private container). This is fine for a personal utility but
-> means it is not App Store distributable as-is.
+> **Note:** App Sandbox is disabled so the app can read Claude Code's Keychain entry and `~/.claude/` logs. No data leaves your machine except the usage API call to `api.anthropic.com`.
 
-On first launch macOS may prompt to allow access to the
-`Claude Code-credentials` Keychain item — choose **Always Allow**.
+## How it works
 
-## What you see
+1. Reads `Claude Code-credentials` from Keychain → extracts OAuth access token
+2. Calls `GET https://api.anthropic.com/api/oauth/usage` to fetch session & weekly utilization
+3. Parses `~/.claude/projects/**/*.jsonl` for today's token counts
+4. Reads `~/.claude.json` for account info (email, plan, etc.)
 
-Menu bar: `⚡37% 📅12%` — session (5h) and weekly (7d) utilization, colored
-🟢 `<50%` / 🟡 `50–80%` / 🔴 `>80%`.
+## Settings
 
-Click the icon for a popover with progress bars, reset countdowns, today's
-token breakdown (input / output / cache), a **Launch at login** toggle, a
-manual refresh, and quit.
-
-## Behavior
-
-- Polls every **5 minutes**; on HTTP `429` it backs off to **10 minutes**.
-- On `401` / expired token it shows a "re-login via Claude Code" message
-  (automatic token refresh is a future phase).
-- Sends a notification when a window exceeds **80%**.
-- All caching is in-memory only.
+| Tab | Options |
+|-----|---------|
+| General | Launch at login |
+| Menu Bar | Show session %, countdown, weekly % |
+| Popover | Show account info, weekly usage, token breakdown |
+| Notifications | Enable alerts, set threshold % |
+| Polling | Poll interval (1–30 min) |
+| Debug | Simulate session / weekly % for UI testing |
 
 ## Project layout
 
 ```
 Burnrate/
-├── BurnrateApp.swift          # @main, NSApplicationDelegateAdaptor
-├── AppDelegate.swift          # NSStatusItem + NSPopover + polling
+├── BurnrateApp.swift
+├── AppDelegate.swift          # NSStatusItem, NSPopover, polling, wake observer
 ├── Models/
-│   ├── UsageResponse.swift    # flexible parse of /api/oauth/usage
-│   └── TokenUsage.swift       # token summary model
+│   ├── UsageResponse.swift    # defensive parser for /api/oauth/usage
+│   ├── AccountInfo.swift      # ~/.claude.json account fields
+│   └── TokenSummary.swift
 ├── Services/
 │   ├── KeychainService.swift  # reads Claude Code-credentials
-│   ├── UsageAPIService.swift  # calls the OAuth usage endpoint
-│   └── JournalService.swift   # parses ~/.claude/projects/**/*.jsonl
+│   ├── UsageAPIService.swift  # OAuth usage endpoint
+│   ├── AccountService.swift   # parses ~/.claude.json
+│   ├── JournalService.swift   # parses ~/.claude/projects/**/*.jsonl
+│   ├── NotificationService.swift
+│   └── UsageCache.swift       # UserDefaults persistence
 ├── ViewModels/
-│   └── UsageViewModel.swift   # @MainActor ObservableObject
+│   ├── UsageViewModel.swift
+│   └── AppSettings.swift
 ├── Views/
-│   └── UsagePopover.swift     # SwiftUI popover content
+│   ├── UsagePopover.swift
+│   └── SettingsView.swift
 └── Utilities/
-    ├── TimeFormatter.swift    # reset countdown formatting
-    ├── UsageColor.swift       # traffic-light thresholds
-    └── LaunchAtLogin.swift    # SMAppService wrapper
+    ├── TimeFormatter.swift
+    └── UsageColor.swift
 ```
 
 ## Notes
 
-- The `/api/oauth/usage` endpoint is undocumented and may change; parsing is
-  intentionally defensive about field names.
-- `expiresAt` from the Keychain is Unix milliseconds.
+- The `/api/oauth/usage` endpoint is undocumented and may change without notice; the response parser is intentionally defensive about field names.
+- App Sandbox must be disabled to access another app's Keychain item and `~/.claude/` — this means the app is not App Store distributable as-is.
+
+## License
+
+MIT
