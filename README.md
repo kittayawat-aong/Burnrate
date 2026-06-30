@@ -1,5 +1,5 @@
 # 🔥 Burnrate
-**Claude Code Usage Monitor for macOS**
+**Claude Code Usage Monitor for macOS** · Built with [Claude](https://claude.ai)
 
 A menu bar app that shows your [Claude Code](https://claude.ai/code) usage at a glance — session %, reset countdown, and token breakdown.
 
@@ -27,10 +27,37 @@ A menu bar app that shows your [Claude Code](https://claude.ai/code) usage at a 
 
 ## Installation
 
-Build from source:
+### Homebrew (recommended)
 
 ```bash
-git clone https://github.com/yourname/burnrate.git
+brew tap kittayawat-aong/burnrate
+brew trust kittayawat-aong/burnrate   # required for third-party taps
+brew install --cask burnrate
+```
+
+**First launch — Gatekeeper quarantine**
+
+macOS blocks apps downloaded from the internet. After installing, either:
+
+- Open **System Settings → Privacy & Security** and click **Open Anyway**, or
+- Run in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Burnrate.app
+```
+
+**Token expired after install?**
+
+If Burnrate shows "Token expired", your Claude Code session may have lapsed. Re-authenticate with:
+
+```bash
+claude auth login
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/kittayawat-aong/burnrate.git
 cd burnrate
 xcodebuild -scheme Burnrate -configuration Release -derivedDataPath build/release build
 cp -R build/release/Build/Products/Release/Burnrate.app /Applications/
