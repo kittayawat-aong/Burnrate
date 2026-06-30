@@ -158,7 +158,11 @@ final class UsageViewModel: ObservableObject {
         guard let utilization = period?.utilization,
               utilization >= settings.notifyThreshold else { return }
 
-        let periodKey = period?.resetsAt ?? .distantFuture
+        // Truncate to the minute so sub-second API timestamp drift doesn't
+        // make the same period look like a new one on every poll.
+        let raw = period?.resetsAt ?? .distantFuture
+        let periodKey = Date(timeIntervalSinceReferenceDate:
+            (raw.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60)
         guard notifiedPeriod != periodKey else { return }
 
         NotificationService.send(

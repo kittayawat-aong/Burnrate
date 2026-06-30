@@ -66,7 +66,7 @@ extension UsagePeriod {
 
     /// Endpoints sometimes return a 0–1 fraction instead of a 0–100 percentage.
     private static func normalize(_ value: Double) -> Double {
-        let v = value <= 1.0 && value > 0 ? value * 100 : value
+        let v = value < 1.0 && value > 0 ? value * 100 : value
         return min(max(v, 0), 100)
     }
 
