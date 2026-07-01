@@ -105,6 +105,7 @@ struct SettingsView: View {
 
 private struct GeneralTab: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @ObservedObject private var claudeSettings = ClaudeSettingsService.shared
 
     var body: some View {
         Form {
@@ -117,6 +118,12 @@ private struct GeneralTab: View {
                     }
             } footer: {
                 captionFooter("Start Burnrate automatically when you log in.")
+            }
+
+            Section {
+                Toggle("Include Co-Authored-By in commits", isOn: $claudeSettings.includeCoAuthoredBy)
+            } footer: {
+                captionFooter("Adds a \"Co-Authored-By: Claude\" line to git commits made by Claude Code. Writes to ~/.claude/settings.json.")
             }
         }
         .formStyle(.grouped)
@@ -151,6 +158,11 @@ private struct PopoverTab: View {
                 Toggle("Account details", isOn: $settings.popoverShowAccount)
                 Toggle("Weekly usage", isOn: $settings.popoverShowWeekly)
                 Toggle("Token breakdown", isOn: $settings.popoverShowTokens)
+            }
+            Section {
+                Toggle("Use 24-hour clock", isOn: $settings.use24HourClock)
+            } footer: {
+                captionFooter("Affects reset time and update timestamps shown in the popover.")
             }
         }
         .formStyle(.grouped)
@@ -253,46 +265,77 @@ private struct DebugTab: View {
 
 private struct WebhookTab: View {
     @ObservedObject var settings: AppSettings
+    @State private var testStatus: TestStatus = .idle
+
+    enum TestStatus: Equatable {
+        case idle, sending, success
+        case failure(String)
+    }
 
     var body: some View {
         Form {
             Section {
                 Toggle("Send webhook on each fetch", isOn: $settings.webhookEnabled)
 
-                HStack {
-                    Text("URL")
-                    TextField("https://example.com/hook", text: $settings.webhookURL)
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(!settings.webhookEnabled)
+                TextField("URL", text: $settings.webhookURL,
+                          prompt: Text("https://your-server.com/webhook"))
+                    .disabled(!settings.webhookEnabled)
+
+                HStack(spacing: 8) {
+                    Button {
+                        sendTest()
+                    } label: {
+                        Label("Send test", systemImage: "paperplane")
+                    }
+                    .disabled(settings.webhookURL.isEmpty || testStatus == .sending)
+
+                    switch testStatus {
+                    case .idle:
+                        EmptyView()
+                    case .sending:
+                        ProgressView().scaleEffect(0.7)
+                    case .success:
+                        Label("200 OK", systemImage: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                    case .failure(let msg):
+                        Label(msg, systemImage: "xmark.circle.fill")
+                            .foregroundColor(.red)
+                            .font(.caption)
+                    }
                 }
             } footer: {
                 captionFooter("Sends a POST request with JSON after every successful fetch. Timestamp is UTC+0.")
-            }
-
-            Section("Payload example") {
-                Text(examplePayload)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .textSelection(.enabled)
             }
         }
         .formStyle(.grouped)
     }
 
-    private var examplePayload: String {
-"""
-{
-  "timestamp": "2026-06-30T00:40:00Z",
-  "session": { "utilization": 87.0,
-               "resets_at": "2026-06-30T02:00:00Z" },
-  "weekly":  { "utilization": 21.0,
-               "resets_at": "2026-07-03T05:00:00Z" },
-  "tokens":  { "input": 79, "output": 17950,
-               "cache_write": 152315,
-               "cache_read": 2192857,
-               "total": 2363201 }
-}
-"""
+    private func sendTest() {
+        guard let url = URL(string: settings.webhookURL) else {
+            testStatus = .failure("Invalid URL")
+            return
+        }
+        testStatus = .sending
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = ["timestamp": ISO8601DateFormatter().string(from: Date()), "test": true]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    testStatus = .failure(error.localizedDescription)
+                    return
+                }
+                if let http = response as? HTTPURLResponse {
+                    testStatus = http.statusCode == 200 ? .success : .failure("HTTP \(http.statusCode)")
+                } else {
+                    testStatus = .failure("No response")
+                }
+            }
+        }.resume()
     }
 }
 

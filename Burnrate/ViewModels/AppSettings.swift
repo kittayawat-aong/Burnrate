@@ -26,6 +26,9 @@ final class AppSettings: ObservableObject {
     // Polling
     @Published var pollIntervalMinutes: Int { didSet { defaults.set(pollIntervalMinutes, forKey: Keys.pollIntervalMinutes) } }
 
+    // Time format
+    @Published var use24HourClock: Bool { didSet { defaults.set(use24HourClock, forKey: Keys.use24HourClock) } }
+
     // Webhook
     @Published var webhookEnabled: Bool { didSet { defaults.set(webhookEnabled, forKey: Keys.webhookEnabled) } }
     @Published var webhookURL: String { didSet { defaults.set(webhookURL, forKey: Keys.webhookURL) } }
@@ -56,6 +59,7 @@ final class AppSettings: ObservableObject {
         notifyEnabled = bool(Keys.notifyEnabled, default: true)
         notifyThreshold = double(Keys.notifyThreshold, default: 80)
         pollIntervalMinutes = int(Keys.pollIntervalMinutes, default: 5)
+        use24HourClock = bool(Keys.use24HourClock, default: false)
         webhookEnabled = bool(Keys.webhookEnabled, default: false)
         webhookURL = store.string(forKey: Keys.webhookURL) ?? ""
         debugSimulate = bool(Keys.debugSimulate, default: false)
@@ -73,6 +77,7 @@ final class AppSettings: ObservableObject {
         static let notifyEnabled = "notifyEnabled"
         static let notifyThreshold = "notifyThreshold"
         static let pollIntervalMinutes = "pollIntervalMinutes"
+        static let use24HourClock = "use24HourClock"
         static let webhookEnabled = "webhookEnabled"
         static let webhookURL = "webhookURL"
         static let debugSimulate = "debugSimulate"

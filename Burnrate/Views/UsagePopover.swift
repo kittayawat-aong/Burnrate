@@ -185,17 +185,17 @@ struct UsagePopover: View {
 
     private func resetText(for period: UsagePeriod?) -> String {
         guard let resetsAt = period?.resetsAt else { return "Reset time unknown" }
-        return "Resets in \(TimeFormatter.countdown(to: resetsAt)) · \(TimeFormatter.resetDate(resetsAt))"
+        return "Resets in \(TimeFormatter.countdown(to: resetsAt)) · \(TimeFormatter.resetDate(resetsAt, use24Hour: settings.use24HourClock))"
     }
 
     private var nextUpdateText: String {
         guard let next = viewModel.nextUpdate else { return "Next update: —" }
-        return "Next update: \(TimeFormatter.clock(next)) (in \(TimeFormatter.countdownWithSeconds(to: next)))"
+        return "Next update: \(TimeFormatter.clock(next, use24Hour: settings.use24HourClock)) (in \(TimeFormatter.countdownWithSeconds(to: next)))"
     }
 
     private var updatedText: String {
         guard let updated = viewModel.lastUpdated else { return "Not yet updated" }
-        return "Updated \(TimeFormatter.clock(updated))"
+        return "Updated \(TimeFormatter.clock(updated, use24Hour: settings.use24HourClock))"
     }
 
     private func formatTokens(_ value: Int) -> String {
