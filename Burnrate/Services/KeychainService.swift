@@ -5,12 +5,6 @@ struct OAuthCredentials {
     let accessToken: String
     let refreshToken: String?
     let expiresAt: Date?
-
-    var isExpired: Bool {
-        guard let expiresAt else { return false }
-        // Treat tokens expiring within 60s as expired.
-        return Date().addingTimeInterval(60) >= expiresAt
-    }
 }
 
 enum KeychainError: Error, LocalizedError {
@@ -30,7 +24,25 @@ enum KeychainError: Error, LocalizedError {
 struct KeychainService {
     static let service = "Claude Code-credentials"
 
+    /// Reads the current credentials from Claude Code's Keychain item. Falls
+    /// back to the last known-good copy (see `CredentialsCache`) if that read
+    /// fails, since a failed read here doesn't necessarily mean the token is
+    /// actually expired — it can also mean the cross-app Keychain access
+    /// check itself failed transiently.
     static func loadCredentials() throws -> OAuthCredentials {
+        do {
+            let credentials = try readFromClaudeCodeKeychain()
+            CredentialsCache.save(credentials)
+            return credentials
+        } catch {
+            if let cached = CredentialsCache.load() {
+                return cached
+            }
+            throw error
+        }
+    }
+
+    private static func readFromClaudeCodeKeychain() throws -> OAuthCredentials {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

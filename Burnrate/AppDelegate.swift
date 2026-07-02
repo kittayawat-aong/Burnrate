@@ -195,7 +195,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showPopover() {
         guard let button = statusItem.button else { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
+
+        // Let the popover surface over a fullscreen app's Space instead of
+        // just switching to the desktop Space without showing anything.
+        if let window = popover.contentViewController?.view.window {
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            window.makeKey()
+        }
 
         // Tick the popover every second so countdowns update live while open.
         // Added in .common mode so it keeps firing during UI tracking.

@@ -78,12 +78,11 @@ final class UsageViewModel: ObservableObject {
         }
 
         do {
+            // Whether re-login is actually required is decided by the /usage
+            // call's 401 response below, not a locally-computed expiry —
+            // reading "Claude Code-credentials" can fail transiently even
+            // when the token is still valid.
             let credentials = try KeychainService.loadCredentials()
-
-            if credentials.isExpired {
-                errorMessage = "Token expired — re-login via Claude Code"
-                return .tokenExpired
-            }
 
             // Capture old reset dates before overwriting.
             let prevSessionResetsAt = session?.resetsAt
