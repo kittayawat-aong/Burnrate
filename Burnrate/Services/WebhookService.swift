@@ -1,4 +1,5 @@
 import Foundation
+import Alamofire
 
 enum WebhookService {
     static func send(session: UsagePeriod?, weekly: UsagePeriod?, tokens: TokenSummary?) {
@@ -35,21 +36,23 @@ enum WebhookService {
 
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Burnrate/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
-        request.httpBody = body
-        request.timeoutInterval = 10
+        let headers: HTTPHeaders = [
+            .contentType("application/json"),
+            .userAgent("Burnrate/\(AppInfo.version)")
+        ]
 
         LogService.shared.log(.info, .webhook, "POST \(url.absoluteString)")
 
-        URLSession.shared.dataTask(with: request) { _, response, error in
-            if let error {
+        AF.request(url, method: .post, headers: headers) {
+            $0.httpBody = body
+            $0.timeoutInterval = 10
+        }
+        .response { response in
+            if let error = response.error {
                 LogService.shared.log(.error, .webhook, "POST \(url.absoluteString) failed: \(error.localizedDescription)")
-            } else if let http = response as? HTTPURLResponse {
+            } else if let http = response.response {
                 LogService.shared.log(.info, .webhook, "POST \(url.absoluteString) -> \(http.statusCode)")
             }
-        }.resume()
+        }
     }
 }

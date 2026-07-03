@@ -1,4 +1,5 @@
 import Foundation
+import Alamofire
 
 enum UsageAPIError: Error, LocalizedError {
     case unauthorized
@@ -20,33 +21,35 @@ enum UsageAPIError: Error, LocalizedError {
 
 /// Calls the undocumented Anthropic OAuth usage endpoint.
 struct UsageAPIService {
-    static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+    static let endpoint = "https://api.anthropic.com/api/oauth/usage"
 
     static func fetchUsage(accessToken: String) async throws -> UsageResponse {
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 20
+        let headers: HTTPHeaders = [
+            .authorization(bearerToken: accessToken),
+            HTTPHeader(name: "anthropic-beta", value: "oauth-2025-04-20"),
+            .accept("application/json")
+        ]
 
         LogService.shared.log(.debug, .api, "GET /api/oauth/usage — Authorization: Bearer \(redacted(accessToken)), anthropic-beta: oauth-2025-04-20")
 
         let start = Date()
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            LogService.shared.log(.error, .api, "GET /api/oauth/usage network error after \(elapsedMs(since: start))ms: \(error.localizedDescription)")
-            throw UsageAPIError.network(error)
+        // No .validate() — non-2xx status codes are handled explicitly below,
+        // same as the previous raw-URLSession version (Alamofire only treats
+        // a request as failed here for actual transport-level errors).
+        let response = await AF.request(endpoint, method: .get, headers: headers) {
+            $0.timeoutInterval = 20
         }
+        .serializingData()
+        .response
         let ms = elapsedMs(since: start)
 
-        guard let http = response as? HTTPURLResponse else {
-            LogService.shared.log(.error, .api, "GET /api/oauth/usage returned a non-HTTP response after \(ms)ms")
-            throw UsageAPIError.decoding
+        guard let http = response.response else {
+            let message = response.error?.localizedDescription ?? "unknown network error"
+            LogService.shared.log(.error, .api, "GET /api/oauth/usage network error after \(ms)ms: \(message)")
+            throw UsageAPIError.network(response.error ?? URLError(.unknown))
         }
+
+        let data = response.data ?? Data()
 
         switch http.statusCode {
         case 200:
