@@ -12,7 +12,10 @@ enum NotificationService {
     static func send(title: String, body: String) {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            guard granted else { return }
+            guard granted else {
+                LogService.shared.log(.warning, .notification, "\"\(title)\" not sent — notifications not authorized")
+                return
+            }
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
@@ -23,6 +26,7 @@ enum NotificationService {
                 trigger: nil
             )
             center.add(request)
+            LogService.shared.log(.info, .notification, "Sent \"\(title)\": \(body)")
         }
     }
 }

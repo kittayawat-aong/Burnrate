@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Preferences window content. Uses a custom top icon tab bar (rather than the
 /// bordered SwiftUI `TabView`) so it renders cleanly inside an AppKit window.
@@ -52,36 +53,33 @@ struct SettingsView: View {
         switch tab {
         case .general:
             GeneralTab()
-        case .menuBar:
-            MenuBarTab(settings: settings)
-        case .popover:
-            PopoverTab(settings: settings)
+        case .display:
+            DisplayTab(settings: settings)
         case .notifications:
             NotificationsTab(settings: settings)
-        case .polling:
-            PollingTab(settings: settings)
         case .webhook:
             WebhookTab(settings: settings)
-        case .debug:
-            DebugTab(settings: settings)
+        case .advanced:
+            AdvancedTab(settings: settings)
+        case .logs:
+            LogsTab()
         case .about:
             AboutTab()
         }
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case general, menuBar, popover, notifications, polling, webhook, debug, about
+        case general, display, notifications, webhook, advanced, logs, about
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .general: return "General"
-            case .menuBar: return "Menu Bar"
-            case .popover: return "Popover"
+            case .display: return "Display"
             case .notifications: return "Notifications"
-            case .polling: return "Polling"
             case .webhook: return "Webhook"
-            case .debug: return "Debug"
+            case .advanced: return "Advanced"
+            case .logs: return "Logs"
             case .about: return "About"
             }
         }
@@ -89,12 +87,11 @@ struct SettingsView: View {
         var icon: String {
             switch self {
             case .general: return "gearshape"
-            case .menuBar: return "menubar.rectangle"
-            case .popover: return "macwindow"
+            case .display: return "macwindow"
             case .notifications: return "bell"
-            case .polling: return "clock.arrow.circlepath"
             case .webhook: return "antenna.radiowaves.left.and.right"
-            case .debug: return "ladybug"
+            case .advanced: return "slider.horizontal.3"
+            case .logs: return "doc.text.magnifyingglass"
             case .about: return "info.circle"
             }
         }
@@ -130,7 +127,7 @@ private struct GeneralTab: View {
     }
 }
 
-private struct MenuBarTab: View {
+private struct DisplayTab: View {
     @ObservedObject var settings: AppSettings
 
     var body: some View {
@@ -144,21 +141,13 @@ private struct MenuBarTab: View {
             } footer: {
                 captionFooter("The flame icon is always shown.")
             }
-        }
-        .formStyle(.grouped)
-    }
-}
 
-private struct PopoverTab: View {
-    @ObservedObject var settings: AppSettings
-
-    var body: some View {
-        Form {
             Section("Show in the popover") {
                 Toggle("Account details", isOn: $settings.popoverShowAccount)
                 Toggle("Weekly usage", isOn: $settings.popoverShowWeekly)
                 Toggle("Token breakdown", isOn: $settings.popoverShowTokens)
             }
+
             Section {
                 Toggle("Use 24-hour clock", isOn: $settings.use24HourClock)
             } footer: {
@@ -202,7 +191,7 @@ private struct NotificationsTab: View {
     }
 }
 
-private struct PollingTab: View {
+private struct AdvancedTab: View {
     @ObservedObject var settings: AppSettings
 
     var body: some View {
@@ -216,19 +205,12 @@ private struct PollingTab: View {
                     Text("15 minutes").tag(15)
                     Text("30 minutes").tag(30)
                 }
+            } header: {
+                Text("Polling")
             } footer: {
                 captionFooter("On rate limiting (429), Burnrate automatically backs off to 10 minutes. Changes apply from the next check.")
             }
-        }
-        .formStyle(.grouped)
-    }
-}
 
-private struct DebugTab: View {
-    @ObservedObject var settings: AppSettings
-
-    var body: some View {
-        Form {
             Section {
                 Toggle("Simulate usage", isOn: $settings.debugSimulate)
 
@@ -337,6 +319,153 @@ private struct WebhookTab: View {
             }
         }.resume()
     }
+}
+
+private struct LogsTab: View {
+    @ObservedObject private var log = LogService.shared
+    @State private var didCopy = false
+    @State private var filter: LogCategory?
+
+    private var filteredEntries: [LogEntry] {
+        guard let filter else { return log.entries }
+        return log.entries.filter { $0.category == filter }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            categoryBar
+
+            Divider()
+
+            if filteredEntries.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 28))
+                        .foregroundColor(.secondary)
+                    Text(log.entries.isEmpty ? "No activity yet" : "No entries in this category")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    List(filteredEntries) { entry in
+                        logRow(entry).id(entry.id)
+                    }
+                    .listStyle(.inset)
+                    .onChange(of: log.entries.count) { _ in
+                        if let last = filteredEntries.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            HStack {
+                Text("\(filteredEntries.count) of \(log.entries.count) entries · saved daily to ~/Library/Logs/Burnrate/")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button {
+                    copyToClipboard()
+                } label: {
+                    Label(didCopy ? "Copied" : "Copy", systemImage: didCopy ? "checkmark" : "doc.on.doc")
+                }
+                .disabled(filteredEntries.isEmpty)
+
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([log.logFileURL])
+                } label: {
+                    Label("Reveal", systemImage: "folder")
+                }
+
+                Button(role: .destructive) {
+                    log.clear()
+                } label: {
+                    Label("Clear", systemImage: "trash")
+                }
+                .disabled(log.entries.isEmpty)
+            }
+            .padding(10)
+        }
+    }
+
+    private var categoryBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                categoryChip(nil, title: "All")
+                ForEach(LogCategory.allCases, id: \.self) { category in
+                    categoryChip(category, title: category.label)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func categoryChip(_ category: LogCategory?, title: String) -> some View {
+        Button {
+            filter = category
+        } label: {
+            Text(title)
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule().fill(filter == category ? Color.accentColor : Color.secondary.opacity(0.15))
+                )
+                .foregroundColor(filter == category ? .white : .primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func logRow(_ entry: LogEntry) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(Self.timeFormatter.string(from: entry.timestamp))
+                .font(.caption.monospacedDigit())
+                .foregroundColor(.secondary)
+                .frame(width: 64, alignment: .leading)
+
+            Text(entry.category.label)
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.secondary)
+                .frame(width: 68, alignment: .leading)
+
+            Text(entry.message)
+                .font(.caption)
+                .foregroundColor(color(for: entry.level))
+                .textSelection(.enabled)
+        }
+    }
+
+    private func color(for level: LogLevel) -> Color {
+        switch level {
+        case .debug: return .secondary
+        case .info: return .primary
+        case .warning: return .orange
+        case .error: return .red
+        }
+    }
+
+    private func copyToClipboard() {
+        let text = filteredEntries.map { entry in
+            "\(Self.timeFormatter.string(from: entry.timestamp)) [\(entry.category.label)] \(entry.message)"
+        }.joined(separator: "\n")
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+
+        didCopy = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { didCopy = false }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
 }
 
 private struct AboutTab: View {

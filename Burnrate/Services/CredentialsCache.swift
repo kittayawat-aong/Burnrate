@@ -34,7 +34,12 @@ enum CredentialsCache {
         var attributes = query
         attributes[kSecValueData as String] = data
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(attributes as CFDictionary, nil)
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        if status == errSecSuccess {
+            LogService.shared.log(.debug, .keychain, "Cache updated (\"\(service)\")")
+        } else {
+            LogService.shared.log(.warning, .keychain, "Failed to update cache (\"\(service)\"), status \(status)")
+        }
     }
 
     static func load() -> OAuthCredentials? {
@@ -45,11 +50,16 @@ enum CredentialsCache {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess,
               let data = item as? Data,
               let stored = try? JSONDecoder().decode(StoredCredentials.self, from: data)
-        else { return nil }
+        else {
+            LogService.shared.log(.debug, .keychain, "No usable cache entry (\"\(service)\"), status \(status)")
+            return nil
+        }
 
+        LogService.shared.log(.debug, .keychain, "Cache hit (\"\(service)\")")
         return OAuthCredentials(
             accessToken: stored.accessToken,
             refreshToken: stored.refreshToken,

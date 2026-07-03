@@ -17,11 +17,15 @@ struct JournalService {
             includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
+            LogService.shared.log(.warning, .journal, "Could not enumerate ~/.claude/projects — no token breakdown available")
             return summary
         }
 
+        var scanned = 0
+        var matched = 0
         for case let url as URL in enumerator {
             guard url.pathExtension == "jsonl" else { continue }
+            scanned += 1
 
             // Skip files not touched since the cutoff to avoid reading old logs.
             if let cutoff,
@@ -31,8 +35,10 @@ struct JournalService {
                 continue
             }
 
+            matched += 1
             summary = summary + parseFile(at: url, since: cutoff)
         }
+        LogService.shared.log(.debug, .journal, "Scanned \(scanned) .jsonl file(s), \(matched) touched since cutoff — today's tokens: in \(summary.input), out \(summary.output), cache-write \(summary.cacheCreation), cache-read \(summary.cacheRead)")
         return summary
     }
 

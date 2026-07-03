@@ -23,11 +23,20 @@ enum UsageCache {
         )
         if let data = try? JSONEncoder().encode(cached) {
             UserDefaults.standard.set(data, forKey: key)
+            LogService.shared.log(.debug, .polling, "Cached usage snapshot saved (UserDefaults)")
         }
     }
 
     static func load() -> CachedUsage? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode(CachedUsage.self, from: data)
+        guard let data = UserDefaults.standard.data(forKey: key) else {
+            LogService.shared.log(.debug, .polling, "No cached usage snapshot on disk")
+            return nil
+        }
+        guard let cached = try? JSONDecoder().decode(CachedUsage.self, from: data) else {
+            LogService.shared.log(.warning, .polling, "Cached usage snapshot could not be decoded — ignoring")
+            return nil
+        }
+        LogService.shared.log(.debug, .polling, "Restored cached usage snapshot from \(cached.lastUpdated) — session \(Int(cached.sessionUtilization))%, weekly \(Int(cached.weeklyUtilization))%")
+        return cached
     }
 }

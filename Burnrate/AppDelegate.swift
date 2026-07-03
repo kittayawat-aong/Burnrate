@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let backoffInterval: TimeInterval = 10 * 60 // 10 minutes on 429
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LogService.shared.log(.info, .ui, "App launched (\(AppInfo.version))")
+
         // Menu-bar-only agent: no Dock icon, even if Info.plist isn't set.
         NSApp.setActivationPolicy(.accessory)
 
@@ -61,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        LogService.shared.log(.info, .ui, "App terminating")
         pollTimer?.invalidate()
         displayTimer?.invalidate()
         popoverTickTimer?.invalidate()
@@ -69,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func didWakeFromSleep() {
+        LogService.shared.log(.info, .polling, "Woke from sleep — refreshing immediately")
         // Cancel whatever stale timer remained and fetch immediately.
         pollTimer?.invalidate()
         poll()
@@ -194,6 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showPopover() {
         guard let button = statusItem.button else { return }
+        LogService.shared.log(.debug, .ui, "Popover shown")
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 
         // Let the popover surface over a fullscreen app's Space instead of
@@ -234,6 +239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Settings window
 
     private func openSettings() {
+        LogService.shared.log(.debug, .ui, "Settings window opened")
         closePopover()
 
         if settingsWindow == nil {
@@ -257,6 +263,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             let outcome = await viewModel.refresh()
             let next: TimeInterval = (outcome == .rateLimited) ? backoffInterval : normalInterval
+            if outcome == .rateLimited {
+                LogService.shared.log(.warning, .polling, "Backing off to \(Int(backoffInterval / 60)) minutes after 429")
+            }
             scheduleNext(after: next)
             if outcome == .success {
                 scheduleResetTimer()
@@ -274,6 +283,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dates = [viewModel.session?.resetsAt, viewModel.weekly?.resetsAt].compactMap { $0 }
         guard let soonest = dates.min(), soonest.timeIntervalSinceNow > 0 else { return }
 
+        LogService.shared.log(.debug, .polling, "Reset timer armed for \(Self.logFormatter.string(from: soonest)) (in \(Int(soonest.timeIntervalSinceNow))s)")
         resetTimer = Timer(fire: soonest, interval: 0, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.poll()
@@ -283,7 +293,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func scheduleNext(after interval: TimeInterval) {
-        viewModel.setNextUpdate(Date().addingTimeInterval(interval))
+        let next = Date().addingTimeInterval(interval)
+        viewModel.setNextUpdate(next)
+        LogService.shared.log(.debug, .polling, "Next poll scheduled for \(Self.logFormatter.string(from: next)) (in \(Int(interval))s)")
         pollTimer?.invalidate()
         pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -291,6 +303,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
+
+    private static let logFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {

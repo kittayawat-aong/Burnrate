@@ -42,11 +42,13 @@ enum WebhookService {
         request.httpBody = body
         request.timeoutInterval = 10
 
+        LogService.shared.log(.info, .webhook, "POST \(url.absoluteString)")
+
         URLSession.shared.dataTask(with: request) { _, response, error in
             if let error {
-                print("[Webhook] error: \(error.localizedDescription)")
+                LogService.shared.log(.error, .webhook, "POST \(url.absoluteString) failed: \(error.localizedDescription)")
             } else if let http = response as? HTTPURLResponse {
-                print("[Webhook] \(http.statusCode)")
+                LogService.shared.log(.info, .webhook, "POST \(url.absoluteString) -> \(http.statusCode)")
             }
         }.resume()
     }

@@ -66,6 +66,7 @@ final class UsageViewModel: ObservableObject {
     private var notifiedWeeklyPeriod: Date?
 
     func refresh() async -> RefreshOutcome {
+        LogService.shared.log(.info, .polling, "Refresh started")
         isLoading = true
         notifyUpdate()
         defer {
@@ -82,13 +83,27 @@ final class UsageViewModel: ObservableObject {
             // call's 401 response below, not a locally-computed expiry —
             // reading "Claude Code-credentials" can fail transiently even
             // when the token is still valid.
-            let credentials = try KeychainService.loadCredentials()
+            let (credentials, source) = try KeychainService.loadCredentials()
 
             // Capture old reset dates before overwriting.
             let prevSessionResetsAt = session?.resetsAt
             let prevWeeklyResetsAt  = weekly?.resetsAt
 
-            let usage = try await UsageAPIService.fetchUsage(accessToken: credentials.accessToken)
+            let usage: UsageResponse
+            var usedFreshRetry = false
+            do {
+                usage = try await UsageAPIService.fetchUsage(accessToken: credentials.accessToken)
+            } catch UsageAPIError.unauthorized where source == .cache {
+                // The credentials we just used came from the fallback cache,
+                // not a live Keychain read, so a 401 here doesn't necessarily
+                // mean the token is expired — it may just be stale (Claude
+                // Code can rotate it while our live read was failing). Force
+                // one fresh live read and retry before believing it.
+                LogService.shared.log(.warning, .keychain, "Cached credentials were rejected (401) — retrying with a fresh Keychain read before reporting expiry")
+                let fresh = try KeychainService.retryLiveRead()
+                usage = try await UsageAPIService.fetchUsage(accessToken: fresh.accessToken)
+                usedFreshRetry = true
+            }
             session = usage.session
             weekly  = usage.weekly
             lastUpdated = Date()
@@ -115,15 +130,20 @@ final class UsageViewModel: ObservableObject {
 
             runThresholdCheck()
             WebhookService.send(session: usage.session, weekly: usage.weekly, tokens: tokenSummary)
+            let credentialNote = usedFreshRetry ? "cached, retried live" : (source == .live ? "live" : "cached")
+            LogService.shared.log(.info, .polling, "Refresh succeeded (\(credentialNote) credentials) — session \(Int(usage.session.utilization))%, weekly \(Int(usage.weekly.utilization))%")
             return .success
         } catch UsageAPIError.rateLimited {
             errorMessage = "Rate limited (429) — backing off"
+            LogService.shared.log(.warning, .polling, "Refresh rate limited — backing off")
             return .rateLimited
         } catch UsageAPIError.unauthorized {
             errorMessage = "Unauthorized — re-login via Claude Code"
+            LogService.shared.log(.error, .polling, "Refresh unauthorized — re-login required")
             return .tokenExpired
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            LogService.shared.log(.error, .polling, "Refresh failed: \(errorMessage ?? "unknown error")")
             return .error
         }
     }

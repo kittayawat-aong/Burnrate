@@ -11,9 +11,11 @@ struct AccountService {
             let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
             let oauth = root["oauthAccount"] as? [String: Any]
         else {
+            LogService.shared.log(.warning, .account, "Could not read account info from ~/.claude.json")
             return nil
         }
 
+        LogService.shared.log(.debug, .account, "Loaded account info from ~/.claude.json")
         return AccountInfo(
             displayName: oauth["displayName"] as? String,
             email: oauth["emailAddress"] as? String,
