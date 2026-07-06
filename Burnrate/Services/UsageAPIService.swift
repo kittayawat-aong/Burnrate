@@ -3,7 +3,7 @@ import Alamofire
 
 enum UsageAPIError: Error, LocalizedError {
     case unauthorized
-    case rateLimited
+    case rateLimited(retryAfter: TimeInterval?)
     case server(Int)
     case decoding
     case network(Error)
@@ -58,9 +58,11 @@ struct UsageAPIService {
             LogService.shared.log(.warning, .api, "GET /api/oauth/usage -> 401 Unauthorized (\(ms)ms) — \(bodySnippet(data))")
             throw UsageAPIError.unauthorized
         case 429:
-            let retryAfter = http.value(forHTTPHeaderField: "Retry-After").map { " (Retry-After: \($0)s)" } ?? ""
-            LogService.shared.log(.warning, .api, "GET /api/oauth/usage -> 429 Rate limited\(retryAfter) (\(ms)ms) — \(bodySnippet(data))")
-            throw UsageAPIError.rateLimited
+            let retryAfterHeader = http.value(forHTTPHeaderField: "Retry-After")
+            let retryAfterSeconds = retryAfterHeader.flatMap { TimeInterval($0) }
+            let retryAfterLog = retryAfterHeader.map { " (Retry-After: \($0)s)" } ?? ""
+            LogService.shared.log(.warning, .api, "GET /api/oauth/usage -> 429 Rate limited\(retryAfterLog) (\(ms)ms) — \(bodySnippet(data))")
+            throw UsageAPIError.rateLimited(retryAfter: retryAfterSeconds)
         default:
             LogService.shared.log(.error, .api, "GET /api/oauth/usage -> \(http.statusCode) (\(ms)ms) — \(bodySnippet(data))")
             throw UsageAPIError.server(http.statusCode)
@@ -84,14 +86,14 @@ struct UsageAPIService {
         Int(Date().timeIntervalSince(start) * 1000)
     }
 
+    private static let isoFormatter = ISO8601DateFormatter()
+
     /// Shows just enough of the token to correlate log lines without leaking
     /// a usable credential into the log file.
     private static func redacted(_ token: String) -> String {
         guard token.count > 12 else { return "***" }
         return "\(token.prefix(8))…\(token.suffix(4))"
     }
-
-    private static let isoFormatter = ISO8601DateFormatter()
 
     /// A log-safe preview of a response body (usage/error payloads only —
     /// never request headers/tokens). Pretty-prints JSON with indentation so

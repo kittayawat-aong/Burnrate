@@ -20,7 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Normal poll interval, from user settings (clamped to a sane minimum).
     private var normalInterval: TimeInterval { TimeInterval(max(1, settings.pollIntervalMinutes) * 60) }
-    private let backoffInterval: TimeInterval = 10 * 60 // 10 minutes on 429
+    private let backoffInterval: TimeInterval = 10 * 60 // fallback on 429 when the server gives no Retry-After
+    private let maxBackoffInterval: TimeInterval = 60 * 60 // never wait longer than this, however large Retry-After is
+    private var isRefreshing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         LogService.shared.log(.info, .ui, "App launched (\(AppInfo.version))")
@@ -246,7 +248,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let hosting = NSHostingController(rootView: SettingsView(settings: settings))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Burnrate Settings"
-            window.styleMask = [.titled, .closable]
+            window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+            window.minSize = NSSize(width: 460, height: 360)
             window.isReleasedWhenClosed = false
             window.center()
             settingsWindow = window
@@ -260,11 +263,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Polling
 
     private func poll() {
+        guard !isRefreshing else {
+            LogService.shared.log(.debug, .polling, "Refresh already in progress — ignoring duplicate poll() call")
+            return
+        }
+        isRefreshing = true
         Task { @MainActor in
+            defer { isRefreshing = false }
             let outcome = await viewModel.refresh()
-            let next: TimeInterval = (outcome == .rateLimited) ? backoffInterval : normalInterval
-            if outcome == .rateLimited {
-                LogService.shared.log(.warning, .polling, "Backing off to \(Int(backoffInterval / 60)) minutes after 429")
+            let next: TimeInterval
+            if case .rateLimited(let retryAfter) = outcome {
+                next = min(max(retryAfter ?? backoffInterval, backoffInterval), maxBackoffInterval)
+                LogService.shared.log(.warning, .polling, "Backing off to \(Int(next / 60)) minutes after 429")
+            } else {
+                next = normalInterval
             }
             scheduleNext(after: next)
             if outcome == .success {

@@ -2,9 +2,9 @@ import Foundation
 import Combine
 
 /// Result of a refresh, used by the AppDelegate to decide the next poll delay.
-enum RefreshOutcome {
+enum RefreshOutcome: Equatable {
     case success
-    case rateLimited
+    case rateLimited(retryAfter: TimeInterval?)
     case tokenExpired
     case error
 }
@@ -89,21 +89,7 @@ final class UsageViewModel: ObservableObject {
             let prevSessionResetsAt = session?.resetsAt
             let prevWeeklyResetsAt  = weekly?.resetsAt
 
-            let usage: UsageResponse
-            var usedFreshRetry = false
-            do {
-                usage = try await UsageAPIService.fetchUsage(accessToken: credentials.accessToken)
-            } catch UsageAPIError.unauthorized where source == .cache {
-                // The credentials we just used came from the fallback cache,
-                // not a live Keychain read, so a 401 here doesn't necessarily
-                // mean the token is expired — it may just be stale (Claude
-                // Code can rotate it while our live read was failing). Force
-                // one fresh live read and retry before believing it.
-                LogService.shared.log(.warning, .keychain, "Cached credentials were rejected (401) — retrying with a fresh Keychain read before reporting expiry")
-                let fresh = try KeychainService.retryLiveRead()
-                usage = try await UsageAPIService.fetchUsage(accessToken: fresh.accessToken)
-                usedFreshRetry = true
-            }
+            let (usage, credentialNote) = try await fetchUsageResilient(credentials: credentials, source: source)
             session = usage.session
             weekly  = usage.weekly
             lastUpdated = Date()
@@ -130,15 +116,14 @@ final class UsageViewModel: ObservableObject {
 
             runThresholdCheck()
             WebhookService.send(session: usage.session, weekly: usage.weekly, tokens: tokenSummary)
-            let credentialNote = usedFreshRetry ? "cached, retried live" : (source == .live ? "live" : "cached")
             LogService.shared.log(.info, .polling, "Refresh succeeded (\(credentialNote) credentials) — session \(Int(usage.session.utilization))%, weekly \(Int(usage.weekly.utilization))%")
             return .success
-        } catch UsageAPIError.rateLimited {
+        } catch UsageAPIError.rateLimited(let retryAfter) {
             errorMessage = "Rate limited (429) — backing off"
             LogService.shared.log(.warning, .polling, "Refresh rate limited — backing off")
-            return .rateLimited
+            return .rateLimited(retryAfter: retryAfter)
         } catch UsageAPIError.unauthorized {
-            errorMessage = "Unauthorized — re-login via Claude Code"
+            errorMessage = "Claude Code login expired\nRun “claude” in Terminal to log in again — Burnrate will pick up the new session automatically."
             LogService.shared.log(.error, .polling, "Refresh unauthorized — re-login required")
             return .tokenExpired
         } catch {
@@ -150,6 +135,66 @@ final class UsageViewModel: ObservableObject {
 
     private func notifyUpdate() {
         onUpdate?()
+    }
+
+    /// Fetches usage, cascading through progressively more expensive recovery
+    /// steps on a 401: a fresh (uncached) Keychain read first, in case our
+    /// cache is merely stale (Claude Code rotated the token since we last
+    /// read it live), then an OAuth token refresh using the stored refresh
+    /// token, in case the token is genuinely expired and Claude Code CLI
+    /// hasn't been run recently enough to renew it itself. A successful
+    /// refresh is written back into Claude Code's own Keychain item so the
+    /// CLI doesn't later try (and fail) to use the refresh token we just
+    /// consumed. Any failure along this chain surfaces as
+    /// `UsageAPIError.unauthorized` so the caller's existing re-login
+    /// messaging applies.
+    private func fetchUsageResilient(credentials: OAuthCredentials, source: CredentialsSource) async throws -> (usage: UsageResponse, note: String) {
+        do {
+            let usage = try await UsageAPIService.fetchUsage(accessToken: credentials.accessToken)
+            return (usage, source == .live ? "live" : "cached")
+        } catch UsageAPIError.unauthorized {
+            var latest = credentials
+
+            if source == .cache {
+                LogService.shared.log(.warning, .keychain, "Cached credentials were rejected (401) — retrying with a fresh Keychain read before reporting expiry")
+                latest = try KeychainService.retryLiveRead()
+                do {
+                    let usage = try await UsageAPIService.fetchUsage(accessToken: latest.accessToken)
+                    return (usage, "cached, retried live")
+                } catch UsageAPIError.unauthorized {
+                    // Fall through to the refresh attempt below.
+                }
+            }
+
+            guard let refreshToken = latest.refreshToken else {
+                throw UsageAPIError.unauthorized
+            }
+
+            do {
+                LogService.shared.log(.warning, .keychain, "Access token rejected (401) — attempting OAuth refresh")
+                let refreshed = try await TokenRefreshService.refresh(refreshToken: refreshToken)
+                try KeychainService.writeRefreshedCredentials(
+                    accessToken: refreshed.accessToken,
+                    refreshToken: refreshed.refreshToken,
+                    expiresAt: refreshed.expiresAt
+                )
+                CredentialsCache.save(OAuthCredentials(
+                    accessToken: refreshed.accessToken,
+                    refreshToken: refreshed.refreshToken,
+                    expiresAt: refreshed.expiresAt
+                ))
+                LogService.shared.log(.info, .keychain, "OAuth refresh succeeded — wrote new token back to Keychain")
+
+                let usage = try await UsageAPIService.fetchUsage(accessToken: refreshed.accessToken)
+                return (usage, "refreshed")
+            } catch UsageAPIError.unauthorized {
+                LogService.shared.log(.error, .keychain, "OAuth refresh succeeded but the new access token was still rejected")
+                throw UsageAPIError.unauthorized
+            } catch {
+                LogService.shared.log(.warning, .keychain, "OAuth refresh failed: \(error.localizedDescription)")
+                throw UsageAPIError.unauthorized
+            }
+        }
     }
 
     // MARK: - Threshold notifications
