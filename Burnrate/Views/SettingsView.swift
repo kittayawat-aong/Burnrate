@@ -61,6 +61,8 @@ struct SettingsView: View {
             WebhookTab(settings: settings)
         case .advanced:
             AdvancedTab(settings: settings)
+        case .autoMode:
+            AutoModeTab()
         case .logs:
             LogsTab()
         case .about:
@@ -69,7 +71,7 @@ struct SettingsView: View {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case general, display, notifications, webhook, advanced, logs, about
+        case general, display, notifications, webhook, advanced, autoMode, logs, about
         var id: String { rawValue }
 
         var title: String {
@@ -79,6 +81,7 @@ struct SettingsView: View {
             case .notifications: return "Notifications"
             case .webhook: return "Webhook"
             case .advanced: return "Advanced"
+            case .autoMode: return "Auto Mode"
             case .logs: return "Logs"
             case .about: return "About"
             }
@@ -91,6 +94,7 @@ struct SettingsView: View {
             case .notifications: return "bell"
             case .webhook: return "antenna.radiowaves.left.and.right"
             case .advanced: return "slider.horizontal.3"
+            case .autoMode: return "checkmark.shield"
             case .logs: return "doc.text.magnifyingglass"
             case .about: return "info.circle"
             }
