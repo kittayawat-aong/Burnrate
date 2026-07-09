@@ -126,40 +126,4 @@ struct KeychainService {
 
         return OAuthCredentials(accessToken: access, refreshToken: refresh, expiresAt: expires)
     }
-
-    /// Writes a refreshed access/refresh token pair back into Claude Code's
-    /// own Keychain item, so the CLI picks up the same token Burnrate just
-    /// obtained instead of trying (and failing) to use the refresh token
-    /// Burnrate just consumed. Only the three OAuth fields are touched —
-    /// every other key in the stored JSON (scopes, subscriptionType, etc.)
-    /// is preserved as-is.
-    static func writeRefreshedCredentials(accessToken: String, refreshToken: String, expiresAt: Date) throws {
-        let raw = try readRawItem()
-
-        var oauth = raw.json["claudeAiOauth"] as? [String: Any] ?? [:]
-        oauth["accessToken"] = accessToken
-        oauth["refreshToken"] = refreshToken
-        oauth["expiresAt"] = Int(expiresAt.timeIntervalSince1970 * 1000)
-
-        var newJson = raw.json
-        newJson["claudeAiOauth"] = oauth
-
-        guard let newData = try? JSONSerialization.data(withJSONObject: newJson) else {
-            throw KeychainError.invalidData
-        }
-
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service
-        ]
-        if let account = raw.account {
-            query[kSecAttrAccount as String] = account
-        }
-        let update: [String: Any] = [kSecValueData as String: newData]
-
-        let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
-        guard status == errSecSuccess else {
-            throw KeychainError.notFound(status: status)
-        }
-    }
 }

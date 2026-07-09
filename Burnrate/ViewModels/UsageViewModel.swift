@@ -142,12 +142,13 @@ final class UsageViewModel: ObservableObject {
     /// cache is merely stale (Claude Code rotated the token since we last
     /// read it live), then an OAuth token refresh using the stored refresh
     /// token, in case the token is genuinely expired and Claude Code CLI
-    /// hasn't been run recently enough to renew it itself. A successful
-    /// refresh is written back into Claude Code's own Keychain item so the
-    /// CLI doesn't later try (and fail) to use the refresh token we just
-    /// consumed. Any failure along this chain surfaces as
-    /// `UsageAPIError.unauthorized` so the caller's existing re-login
-    /// messaging applies.
+    /// hasn't been run recently enough to renew it itself. The refreshed
+    /// token is kept only in Burnrate's own cache — it is deliberately never
+    /// written back into Claude Code's Keychain item. Refresh tokens rotate
+    /// on use, so writing back risks racing (and clobbering) a refresh the
+    /// CLI does on its own, which forces the CLI itself to need a re-login.
+    /// Any failure along this chain surfaces as `UsageAPIError.unauthorized`
+    /// so the caller's existing re-login messaging applies.
     private func fetchUsageResilient(credentials: OAuthCredentials, source: CredentialsSource) async throws -> (usage: UsageResponse, note: String) {
         do {
             let usage = try await UsageAPIService.fetchUsage(accessToken: credentials.accessToken)
@@ -157,12 +158,19 @@ final class UsageViewModel: ObservableObject {
 
             if source == .cache {
                 LogService.shared.log(.warning, .keychain, "Cached credentials were rejected (401) — retrying with a fresh Keychain read before reporting expiry")
-                latest = try KeychainService.retryLiveRead()
                 do {
+                    latest = try KeychainService.retryLiveRead()
                     let usage = try await UsageAPIService.fetchUsage(accessToken: latest.accessToken)
                     return (usage, "cached, retried live")
                 } catch UsageAPIError.unauthorized {
                     // Fall through to the refresh attempt below.
+                } catch {
+                    // Live Keychain read itself failed (e.g. "In dark wake, no
+                    // UI possible" while the Mac is asleep) — that's not proof
+                    // the token is expired, so don't give up here. Fall through
+                    // and try the OAuth refresh token instead, which needs no
+                    // Keychain access at all.
+                    LogService.shared.log(.warning, .keychain, "Live Keychain retry failed (\(error.localizedDescription)) — falling through to OAuth refresh")
                 }
             }
 
@@ -173,17 +181,12 @@ final class UsageViewModel: ObservableObject {
             do {
                 LogService.shared.log(.warning, .keychain, "Access token rejected (401) — attempting OAuth refresh")
                 let refreshed = try await TokenRefreshService.refresh(refreshToken: refreshToken)
-                try KeychainService.writeRefreshedCredentials(
-                    accessToken: refreshed.accessToken,
-                    refreshToken: refreshed.refreshToken,
-                    expiresAt: refreshed.expiresAt
-                )
                 CredentialsCache.save(OAuthCredentials(
                     accessToken: refreshed.accessToken,
                     refreshToken: refreshed.refreshToken,
                     expiresAt: refreshed.expiresAt
                 ))
-                LogService.shared.log(.info, .keychain, "OAuth refresh succeeded — wrote new token back to Keychain")
+                LogService.shared.log(.info, .keychain, "OAuth refresh succeeded — cached in Burnrate only (not written back to Keychain)")
 
                 let usage = try await UsageAPIService.fetchUsage(accessToken: refreshed.accessToken)
                 return (usage, "refreshed")

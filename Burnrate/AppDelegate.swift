@@ -18,6 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: NSWindow?
 
+    /// True while the display is off (manual display sleep, full system
+    /// sleep, or a dark wake — which by definition never turns the screen
+    /// back on). Used to skip poll() entirely rather than attempt a fetch
+    /// that's likely to hit a Keychain "no UI possible" failure.
+    private var isDisplayAsleep = false
+
     /// Normal poll interval, from user settings (clamped to a sane minimum).
     private var normalInterval: TimeInterval { TimeInterval(max(1, settings.pollIntervalMinutes) * 60) }
     private let backoffInterval: TimeInterval = 10 * 60 // fallback on 429 when the server gives no Retry-After
@@ -62,6 +68,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.didWakeNotification,
             object: nil
         )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(screensDidSleep),
+            name: NSWorkspace.screensDidSleepNotification,
+            object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(screensDidWake),
+            name: NSWorkspace.screensDidWakeNotification,
+            object: nil
+        )
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -78,6 +96,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Cancel whatever stale timer remained and fetch immediately.
         pollTimer?.invalidate()
         poll()
+    }
+
+    @objc private func screensDidSleep() {
+        isDisplayAsleep = true
+        LogService.shared.log(.debug, .polling, "Display asleep — polls will be skipped until wake")
+    }
+
+    @objc private func screensDidWake() {
+        isDisplayAsleep = false
+        LogService.shared.log(.debug, .polling, "Display woke")
     }
 
     /// Re-renders the menu bar every minute so the reset countdown ticks down
@@ -265,6 +293,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func poll() {
         guard !isRefreshing else {
             LogService.shared.log(.debug, .polling, "Refresh already in progress — ignoring duplicate poll() call")
+            return
+        }
+        guard !isDisplayAsleep else {
+            // Almost certainly a dark wake: the CPU briefly woke to run
+            // timers like this one but the screen never turned back on. A
+            // live Keychain read would fail here anyway (macOS blocks it
+            // with "no UI possible"), so skip the fetch rather than burn a
+            // request on a call likely to fail. didWakeFromSleep() will
+            // trigger an immediate poll once a real wake happens.
+            LogService.shared.log(.debug, .polling, "Skipping poll — display is asleep")
+            scheduleNext(after: normalInterval)
             return
         }
         isRefreshing = true
