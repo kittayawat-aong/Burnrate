@@ -1,10 +1,19 @@
 import Foundation
 import Security
 
+/// The access token is all Burnrate needs — the refresh token deliberately
+/// stays untouched in Claude Code's Keychain item. Refresh tokens are
+/// single-use (rotated by the server), so if Burnrate ever consumed one it
+/// would invalidate the copy the CLI still holds and force the CLI into a
+/// re-login.
 struct OAuthCredentials {
     let accessToken: String
-    let refreshToken: String?
-    let expiresAt: Date?
+    /// kSecAttrModificationDate of the Claude Code Keychain item at the time
+    /// this token was read from it. Compared against a fresh (prompt-free)
+    /// attributes query to tell whether a live re-read could return anything
+    /// newer than what we already have. Nil for cache entries written by
+    /// older builds.
+    var sourceModificationDate: Date? = nil
 }
 
 enum KeychainError: Error, LocalizedError {
@@ -75,14 +84,33 @@ struct KeychainService {
         return credentials
     }
 
-    private static func readFromClaudeCodeKeychain() throws -> OAuthCredentials {
-        try parse(readRawItem().json)
+    /// Modification date of Claude Code's Keychain item, via an
+    /// attributes-only query. The macOS "allow access" prompt guards the
+    /// item's data (kSecValueData), not its attributes, so this never
+    /// prompts and is safe to call on every poll. Returns nil when the item
+    /// is missing or the query fails.
+    static func itemModificationDate() -> Date? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let attributes = item as? [String: Any]
+        else { return nil }
+        return attributes[kSecAttrModificationDate as String] as? Date
     }
 
-    /// Reads the item's full attribute set (not just the parsed fields we
-    /// care about) so a write-back can preserve every other key Claude Code
-    /// stores alongside the OAuth token (scopes, subscriptionType, etc.).
-    private static func readRawItem() throws -> (account: String?, json: [String: Any]) {
+    private static func readFromClaudeCodeKeychain() throws -> OAuthCredentials {
+        let item = try readRawItem()
+        var credentials = try parse(item.json)
+        credentials.sourceModificationDate = item.modificationDate
+        return credentials
+    }
+
+    private static func readRawItem() throws -> (json: [String: Any], modificationDate: Date?) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -104,7 +132,7 @@ struct KeychainService {
             throw KeychainError.invalidData
         }
 
-        return (attributes[kSecAttrAccount as String] as? String, json)
+        return (json, attributes[kSecAttrModificationDate as String] as? Date)
     }
 
     private static func parse(_ json: [String: Any]) throws -> OAuthCredentials {
@@ -115,15 +143,6 @@ struct KeychainService {
             throw KeychainError.invalidData
         }
 
-        let refresh = oauth["refreshToken"] as? String
-
-        var expires: Date?
-        if let ms = oauth["expiresAt"] as? Double {
-            expires = Date(timeIntervalSince1970: ms / 1000)
-        } else if let ms = oauth["expiresAt"] as? Int {
-            expires = Date(timeIntervalSince1970: Double(ms) / 1000)
-        }
-
-        return OAuthCredentials(accessToken: access, refreshToken: refresh, expiresAt: expires)
+        return OAuthCredentials(accessToken: access)
     }
 }

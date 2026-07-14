@@ -24,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// that's likely to hit a Keychain "no UI possible" failure.
     private var isDisplayAsleep = false
 
+    /// Set when a scheduled poll fired while the display was asleep and was
+    /// skipped, so the data can refresh immediately on display wake instead
+    /// of waiting out the rest of the poll interval.
+    private var didSkipPollWhileAsleep = false
+
     /// Normal poll interval, from user settings (clamped to a sane minimum).
     private var normalInterval: TimeInterval { TimeInterval(max(1, settings.pollIntervalMinutes) * 60) }
     private let backoffInterval: TimeInterval = 10 * 60 // fallback on 429 when the server gives no Retry-After
@@ -105,7 +110,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screensDidWake() {
         isDisplayAsleep = false
-        LogService.shared.log(.debug, .polling, "Display woke")
+        if didSkipPollWhileAsleep {
+            LogService.shared.log(.info, .polling, "Display woke — running the poll that was skipped during display sleep")
+            pollTimer?.invalidate()
+            poll()
+        } else {
+            LogService.shared.log(.debug, .polling, "Display woke")
+        }
     }
 
     /// Re-renders the menu bar every minute so the reset countdown ticks down
@@ -303,9 +314,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // request on a call likely to fail. didWakeFromSleep() will
             // trigger an immediate poll once a real wake happens.
             LogService.shared.log(.debug, .polling, "Skipping poll — display is asleep")
+            didSkipPollWhileAsleep = true
             scheduleNext(after: normalInterval)
             return
         }
+        didSkipPollWhileAsleep = false
         isRefreshing = true
         Task { @MainActor in
             defer { isRefreshing = false }

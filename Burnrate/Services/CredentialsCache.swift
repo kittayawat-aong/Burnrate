@@ -11,17 +11,19 @@ import Security
 enum CredentialsCache {
     private static let service = "Burnrate-credentials-cache"
 
+    // Only the access token is cached — never the refresh token; see the
+    // OAuthCredentials doc comment. Older builds' cache entries carry extra
+    // keys (refreshToken, expiresAt), which JSONDecoder ignores, and
+    // sourceModificationDate is optional so those entries still decode.
     private struct StoredCredentials: Codable {
         let accessToken: String
-        let refreshToken: String?
-        let expiresAt: Date?
+        let sourceModificationDate: Date?
     }
 
     static func save(_ credentials: OAuthCredentials) {
         let stored = StoredCredentials(
             accessToken: credentials.accessToken,
-            refreshToken: credentials.refreshToken,
-            expiresAt: credentials.expiresAt
+            sourceModificationDate: credentials.sourceModificationDate
         )
         guard let data = try? JSONEncoder().encode(stored) else { return }
 
@@ -62,8 +64,7 @@ enum CredentialsCache {
         LogService.shared.log(.debug, .keychain, "Cache hit (\"\(service)\")")
         return OAuthCredentials(
             accessToken: stored.accessToken,
-            refreshToken: stored.refreshToken,
-            expiresAt: stored.expiresAt
+            sourceModificationDate: stored.sourceModificationDate
         )
     }
 }

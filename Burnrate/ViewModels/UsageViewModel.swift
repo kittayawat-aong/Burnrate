@@ -65,7 +65,25 @@ final class UsageViewModel: ObservableObject {
     private var notifiedSessionPeriod: Date?
     private var notifiedWeeklyPeriod: Date?
 
+    // Set when a refresh ends in .tokenExpired: the Keychain item's
+    // modification date at that moment. While the item stays unchanged a
+    // re-login hasn't happened, so subsequent polls skip the network
+    // entirely (the fetch would just 401 again) instead of burning requests
+    // toward a 429. Cleared as soon as the item changes.
+    private var isAwaitingRelogin = false
+    private var expiredItemDate: Date?
+
     func refresh() async -> RefreshOutcome {
+        if isAwaitingRelogin {
+            guard !Self.sameItemDate(KeychainService.itemModificationDate(), expiredItemDate) else {
+                LogService.shared.log(.debug, .polling, "Still awaiting re-login — Keychain item unchanged, skipping fetch")
+                return .tokenExpired
+            }
+            LogService.shared.log(.info, .polling, "Keychain item changed since token expired — resuming fetches")
+            isAwaitingRelogin = false
+            expiredItemDate = nil
+        }
+
         LogService.shared.log(.info, .polling, "Refresh started")
         isLoading = true
         notifyUpdate()
@@ -124,7 +142,9 @@ final class UsageViewModel: ObservableObject {
             return .rateLimited(retryAfter: retryAfter)
         } catch UsageAPIError.unauthorized {
             errorMessage = "Claude Code login expired\nRun “claude” in Terminal to log in again — Burnrate will pick up the new session automatically."
-            LogService.shared.log(.error, .polling, "Refresh unauthorized — re-login required")
+            LogService.shared.log(.error, .polling, "Refresh unauthorized — re-login required; pausing fetches until the Keychain item changes")
+            isAwaitingRelogin = true
+            expiredItemDate = KeychainService.itemModificationDate()
             return .tokenExpired
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -137,66 +157,47 @@ final class UsageViewModel: ObservableObject {
         onUpdate?()
     }
 
-    /// Fetches usage, cascading through progressively more expensive recovery
-    /// steps on a 401: a fresh (uncached) Keychain read first, in case our
-    /// cache is merely stale (Claude Code rotated the token since we last
-    /// read it live), then an OAuth token refresh using the stored refresh
-    /// token, in case the token is genuinely expired and Claude Code CLI
-    /// hasn't been run recently enough to renew it itself. The refreshed
-    /// token is kept only in Burnrate's own cache — it is deliberately never
-    /// written back into Claude Code's Keychain item. Refresh tokens rotate
-    /// on use, so writing back risks racing (and clobbering) a refresh the
-    /// CLI does on its own, which forces the CLI itself to need a re-login.
-    /// Any failure along this chain surfaces as `UsageAPIError.unauthorized`
-    /// so the caller's existing re-login messaging applies.
+    /// Fetches usage, retrying once on a 401 when the rejection is plausibly
+    /// our own staleness: cache-sourced credentials go stale whenever Claude
+    /// Code rotates its token. The Keychain item's modification date —
+    /// readable without triggering the macOS access prompt — decides whether
+    /// a live re-read (which *can* prompt) is worth it: an unchanged item
+    /// means a re-read would return the exact token that was just rejected.
+    ///
+    /// Burnrate deliberately never calls the OAuth token-refresh endpoint.
+    /// Refresh tokens are single-use (the server rotates them), so consuming
+    /// the CLI's refresh token invalidates the copy the CLI still holds and
+    /// forces the CLI itself into a re-login. A genuinely expired token is
+    /// fixed by running `claude`; see the `.tokenExpired` handling in
+    /// `refresh()` for how polling pauses until that happens.
     private func fetchUsageResilient(credentials: OAuthCredentials, source: CredentialsSource) async throws -> (usage: UsageResponse, note: String) {
         do {
             let usage = try await UsageAPIService.fetchUsage(accessToken: credentials.accessToken)
             return (usage, source == .live ? "live" : "cached")
         } catch UsageAPIError.unauthorized {
-            var latest = credentials
+            guard source == .cache else { throw UsageAPIError.unauthorized }
 
-            if source == .cache {
-                LogService.shared.log(.warning, .keychain, "Cached credentials were rejected (401) — retrying with a fresh Keychain read before reporting expiry")
-                do {
-                    latest = try KeychainService.retryLiveRead()
-                    let usage = try await UsageAPIService.fetchUsage(accessToken: latest.accessToken)
-                    return (usage, "cached, retried live")
-                } catch UsageAPIError.unauthorized {
-                    // Fall through to the refresh attempt below.
-                } catch {
-                    // Live Keychain read itself failed (e.g. "In dark wake, no
-                    // UI possible" while the Mac is asleep) — that's not proof
-                    // the token is expired, so don't give up here. Fall through
-                    // and try the OAuth refresh token instead, which needs no
-                    // Keychain access at all.
-                    LogService.shared.log(.warning, .keychain, "Live Keychain retry failed (\(error.localizedDescription)) — falling through to OAuth refresh")
-                }
-            }
-
-            guard let refreshToken = latest.refreshToken else {
+            let itemDate = KeychainService.itemModificationDate()
+            if Self.sameItemDate(itemDate, credentials.sourceModificationDate) {
+                LogService.shared.log(.warning, .keychain, "Cached credentials rejected (401) and the Keychain item is unchanged — token is genuinely expired")
                 throw UsageAPIError.unauthorized
             }
 
-            do {
-                LogService.shared.log(.warning, .keychain, "Access token rejected (401) — attempting OAuth refresh")
-                let refreshed = try await TokenRefreshService.refresh(refreshToken: refreshToken)
-                CredentialsCache.save(OAuthCredentials(
-                    accessToken: refreshed.accessToken,
-                    refreshToken: refreshed.refreshToken,
-                    expiresAt: refreshed.expiresAt
-                ))
-                LogService.shared.log(.info, .keychain, "OAuth refresh succeeded — cached in Burnrate only (not written back to Keychain)")
+            LogService.shared.log(.warning, .keychain, "Cached credentials rejected (401) but the Keychain item has changed — retrying with a live read")
+            let latest = try KeychainService.retryLiveRead()
+            let usage = try await UsageAPIService.fetchUsage(accessToken: latest.accessToken)
+            return (usage, "cached, retried live")
+        }
+    }
 
-                let usage = try await UsageAPIService.fetchUsage(accessToken: refreshed.accessToken)
-                return (usage, "refreshed")
-            } catch UsageAPIError.unauthorized {
-                LogService.shared.log(.error, .keychain, "OAuth refresh succeeded but the new access token was still rejected")
-                throw UsageAPIError.unauthorized
-            } catch {
-                LogService.shared.log(.warning, .keychain, "OAuth refresh failed: \(error.localizedDescription)")
-                throw UsageAPIError.unauthorized
-            }
+    /// Keychain modification dates survive a JSON round-trip through the
+    /// credentials cache, but compare with a small tolerance rather than
+    /// exact equality to be safe against sub-second encoding drift.
+    private static func sameItemDate(_ a: Date?, _ b: Date?) -> Bool {
+        switch (a, b) {
+        case (nil, nil): return true
+        case let (a?, b?): return abs(a.timeIntervalSince(b)) < 1
+        default: return false
         }
     }
 
