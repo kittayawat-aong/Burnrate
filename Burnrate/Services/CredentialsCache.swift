@@ -12,17 +12,22 @@ enum CredentialsCache {
     private static let service = "Burnrate-credentials-cache"
 
     // Only the access token is cached — never the refresh token; see the
-    // OAuthCredentials doc comment. Older builds' cache entries carry extra
-    // keys (refreshToken, expiresAt), which JSONDecoder ignores, and
-    // sourceModificationDate is optional so those entries still decode.
+    // OAuthCredentials doc comment. Both optional fields tolerate entries
+    // written by older builds: sourceModificationDate decodes as nil when
+    // absent, and pre-1.0.0 entries that stored expiresAt as raw epoch
+    // milliseconds decode to a far-future Date (JSONDecoder reads it as
+    // seconds since 2001), which just means "not expired" — the entry is
+    // rewritten in the current format on the next live read anyway.
     private struct StoredCredentials: Codable {
         let accessToken: String
+        let expiresAt: Date?
         let sourceModificationDate: Date?
     }
 
     static func save(_ credentials: OAuthCredentials) {
         let stored = StoredCredentials(
             accessToken: credentials.accessToken,
+            expiresAt: credentials.expiresAt,
             sourceModificationDate: credentials.sourceModificationDate
         )
         guard let data = try? JSONEncoder().encode(stored) else { return }

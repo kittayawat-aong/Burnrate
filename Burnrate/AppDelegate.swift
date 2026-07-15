@@ -306,7 +306,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             LogService.shared.log(.debug, .polling, "Refresh already in progress — ignoring duplicate poll() call")
             return
         }
-        guard !isDisplayAsleep else {
+        // The notification-based flag alone is not enough: when the system
+        // goes straight into full sleep (lid close, idle sleep) the
+        // screensDidSleep notification is never delivered to this process,
+        // so also ask the window server directly whether the main display
+        // is currently dark.
+        guard !isDisplayAsleep, CGDisplayIsAsleep(CGMainDisplayID()) == 0 else {
             // Almost certainly a dark wake: the CPU briefly woke to run
             // timers like this one but the screen never turned back on. A
             // live Keychain read would fail here anyway (macOS blocks it

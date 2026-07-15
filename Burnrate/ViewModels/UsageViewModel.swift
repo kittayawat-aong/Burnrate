@@ -100,8 +100,32 @@ final class UsageViewModel: ObservableObject {
             // Whether re-login is actually required is decided by the /usage
             // call's 401 response below, not a locally-computed expiry —
             // reading "Claude Code-credentials" can fail transiently even
-            // when the token is still valid.
-            let (credentials, source) = try KeychainService.loadCredentials()
+            // when the token is still valid. The token's own expiresAt is
+            // still honored the other way around: a token past it is certain
+            // to 401, so it's never sent (see below) — overnight, those
+            // doomed requests are what accumulate into a server-side 429.
+            var (credentials, source) = try KeychainService.loadCredentials()
+
+            if credentials.isExpired {
+                let itemDate = KeychainService.itemModificationDate()
+                if !Self.sameItemDate(itemDate, credentials.sourceModificationDate) {
+                    // Claude Code rotated the token since this copy was read
+                    // — a live read picks up the newer one. In a dark wake
+                    // this read fails with "no UI possible" and the error
+                    // falls through to the generic catch, still without
+                    // having burned an API request.
+                    LogService.shared.log(.warning, .keychain, "Cached token is past its expiry but the Keychain item has changed — retrying with a live read")
+                    credentials = try KeychainService.retryLiveRead()
+                    source = .live
+                }
+                if credentials.isExpired {
+                    LogService.shared.log(.warning, .polling, "Token expired \(Self.describeAge(of: credentials.expiresAt)) and the Keychain has nothing newer — skipping fetch until Claude Code refreshes it")
+                    errorMessage = "Claude token expired\nIt refreshes automatically the next time Claude Code runs — Burnrate will pick it up."
+                    isAwaitingRelogin = true
+                    expiredItemDate = KeychainService.itemModificationDate()
+                    return .tokenExpired
+                }
+            }
 
             // Capture old reset dates before overwriting.
             let prevSessionResetsAt = session?.resetsAt
@@ -188,6 +212,13 @@ final class UsageViewModel: ObservableObject {
             let usage = try await UsageAPIService.fetchUsage(accessToken: latest.accessToken)
             return (usage, "cached, retried live")
         }
+    }
+
+    /// "5 min ago" / "moments ago" for the expired-token log line.
+    private static func describeAge(of date: Date?) -> String {
+        guard let date else { return "at an unknown time" }
+        let minutes = Int(-date.timeIntervalSinceNow / 60)
+        return minutes < 1 ? "moments ago" : "\(minutes) min ago"
     }
 
     /// Keychain modification dates survive a JSON round-trip through the

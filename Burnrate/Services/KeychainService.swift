@@ -8,12 +8,25 @@ import Security
 /// re-login.
 struct OAuthCredentials {
     let accessToken: String
+    /// The token's own expiry (`claudeAiOauth.expiresAt`, epoch ms), as
+    /// written by Claude Code. A token past this date is certain to 401, so
+    /// `UsageViewModel.refresh()` skips the network call entirely instead of
+    /// burning a doomed request. Nil when the Keychain JSON omits it or for
+    /// cache entries written by older builds.
+    var expiresAt: Date? = nil
     /// kSecAttrModificationDate of the Claude Code Keychain item at the time
     /// this token was read from it. Compared against a fresh (prompt-free)
     /// attributes query to tell whether a live re-read could return anything
     /// newer than what we already have. Nil for cache entries written by
     /// older builds.
     var sourceModificationDate: Date? = nil
+
+    /// True when the token is past its own expiry date. False when the
+    /// expiry is unknown — only the API's response can judge those.
+    var isExpired: Bool {
+        guard let expiresAt else { return false }
+        return expiresAt.timeIntervalSinceNow <= 0
+    }
 }
 
 enum KeychainError: Error, LocalizedError {
@@ -143,6 +156,11 @@ struct KeychainService {
             throw KeychainError.invalidData
         }
 
-        return OAuthCredentials(accessToken: access)
+        var expiresAt: Date?
+        if let millis = oauth["expiresAt"] as? Double {
+            expiresAt = Date(timeIntervalSince1970: millis / 1000)
+        }
+
+        return OAuthCredentials(accessToken: access, expiresAt: expiresAt)
     }
 }
