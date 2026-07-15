@@ -23,6 +23,16 @@ extension UsagePopover {
         }
     }
 
+    /// "Fable (7d)" — window suffix derived from the scoped limit's group,
+    /// omitted when the API doesn't say which window it is.
+    func scopedTitle(_ scoped: ScopedUsage) -> String {
+        switch scoped.group {
+        case "weekly": return "\(scoped.label) (7d)"
+        case "session": return "\(scoped.label) (5h)"
+        default: return scoped.label
+        }
+    }
+
     /// Thin inline warning shown above cached values when a fetch failed.
     func staleNote(_ message: String) -> some View {
         let (title, detail) = splitMessage(message)

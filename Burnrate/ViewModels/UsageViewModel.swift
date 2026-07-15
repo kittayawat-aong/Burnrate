@@ -13,6 +13,11 @@ enum RefreshOutcome: Equatable {
 final class UsageViewModel: ObservableObject {
     @Published private(set) var session: UsagePeriod?
     @Published private(set) var weekly: UsagePeriod?
+    /// Model/surface-scoped limits from the response's `limits` array (e.g.
+    /// a temporary per-model weekly cap). Empty whenever the API stops
+    /// returning them — the popover rows disappear with them. Not persisted
+    /// in UsageCache, so they also stay hidden until the first live fetch.
+    @Published private(set) var scopedLimits: [ScopedUsage] = []
     @Published private(set) var tokenSummary: TokenSummary?
     @Published private(set) var account: AccountInfo?
     @Published private(set) var lastUpdated: Date?
@@ -134,6 +139,7 @@ final class UsageViewModel: ObservableObject {
             let (usage, credentialNote) = try await fetchUsageResilient(credentials: credentials, source: source)
             session = usage.session
             weekly  = usage.weekly
+            scopedLimits = usage.scopedLimits
             lastUpdated = Date()
             errorMessage = nil
 

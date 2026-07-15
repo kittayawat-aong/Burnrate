@@ -31,6 +31,9 @@ struct UsagePopover: View {
                 periodRow(title: "Session (5h)", period: viewModel.effectiveSession)
                 if settings.popoverShowWeekly {
                     periodRow(title: "Weekly (7d)", period: viewModel.effectiveWeekly)
+                    ForEach(viewModel.scopedLimits) { scoped in
+                        periodRow(title: scopedTitle(scoped), period: scoped.period)
+                    }
                 }
 
                 if settings.popoverShowTokens, let tokens = viewModel.tokenSummary, tokens.total > 0 {

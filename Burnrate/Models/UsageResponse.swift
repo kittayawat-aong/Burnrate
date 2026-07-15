@@ -8,6 +8,23 @@ struct UsagePeriod {
     let resetsAt: Date?
 }
 
+/// A scoped entry from the response's `limits` array — a cap that applies to
+/// one model or surface only (e.g. the temporary per-model weekly limit for
+/// "Fable"). Parsed generically from whatever the endpoint returns, nothing
+/// is hardcoded per model: rows appear and disappear in the UI as Anthropic
+/// adds or retires scoped limits.
+struct ScopedUsage: Identifiable {
+    /// Human-readable name from `scope.model.display_name` (or the closest
+    /// available fallback).
+    let label: String
+    /// The `group` field ("session"/"weekly"), used for the window suffix in
+    /// the UI. Nil when the response omits it.
+    let group: String?
+    let period: UsagePeriod
+
+    var id: String { "\(label)-\(group ?? "")" }
+}
+
 /// Parsed response from the (undocumented) OAuth usage endpoint.
 ///
 /// The endpoint is undocumented and its shape may change, so parsing is done
@@ -16,6 +33,7 @@ struct UsagePeriod {
 struct UsageResponse {
     let session: UsagePeriod   // 5-hour window
     let weekly: UsagePeriod    // 7-day window
+    let scopedLimits: [ScopedUsage]  // model/surface-scoped extras, often empty
 
     static func parse(_ data: Data) -> UsageResponse? {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
@@ -30,8 +48,29 @@ struct UsageResponse {
 
         return UsageResponse(
             session: UsagePeriod(from: sessionDict),
-            weekly: UsagePeriod(from: weeklyDict)
+            weekly: UsagePeriod(from: weeklyDict),
+            scopedLimits: parseScopedLimits(root["limits"] as? [[String: Any]] ?? [])
         )
+    }
+
+    /// Picks the entries of the `limits` array that carry a scope with a
+    /// nameable target. Unscoped entries (`scope: null`) duplicate the
+    /// top-level five_hour/seven_day windows and are skipped.
+    private static func parseScopedLimits(_ limits: [[String: Any]]) -> [ScopedUsage] {
+        limits.compactMap { entry in
+            guard let scope = entry["scope"] as? [String: Any] else { return nil }
+            let model = scope["model"] as? [String: Any]
+            let surface = scope["surface"] as? [String: Any]
+            let label = (model?["display_name"] as? String)
+                ?? (model?["id"] as? String)
+                ?? (surface?["display_name"] as? String)
+            guard let label, !label.isEmpty else { return nil }
+            return ScopedUsage(
+                label: label,
+                group: entry["group"] as? String,
+                period: UsagePeriod(from: entry)
+            )
+        }
     }
 
     private static func firstDict(in root: [String: Any], keys: [String]) -> [String: Any]? {
@@ -47,7 +86,7 @@ extension UsagePeriod {
         let dict = dict ?? [:]
         self.utilization = UsagePeriod.number(
             in: dict,
-            keys: ["utilization", "percent_used", "used_percent", "percentage", "used"]
+            keys: ["utilization", "percent", "percent_used", "used_percent", "percentage", "used"]
         )
         self.resetsAt = UsagePeriod.date(
             in: dict,
