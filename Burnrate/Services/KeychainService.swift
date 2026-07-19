@@ -61,14 +61,12 @@ struct KeychainService {
     static let service = "Claude Code-credentials"
 
     /// Prefers the cached copy (see `CredentialsCache`) over a live read of
-    /// Claude Code's Keychain item. A live read of another app's Keychain
-    /// item makes macOS show an "Allow access" prompt every time the
-    /// requesting app's code signature doesn't match a prior grant (which,
-    /// for a frequently-rebuilt app, is often) — so we only pay that cost
-    /// when there's no cache yet. Once cached, the /usage API's response is
-    /// what decides whether the token is actually still good; see the
-    /// cache→live retry in `UsageViewModel.refresh()` for what happens when
-    /// it isn't.
+    /// Claude Code's Keychain item, since a live read still costs a Keychain
+    /// round-trip even with the `/usr/bin/security` read path below — so we
+    /// only pay that cost when there's no cache yet. Once cached, the /usage
+    /// API's response is what decides whether the token is actually still
+    /// good; see the cache→live retry in `UsageViewModel.refresh()` for what
+    /// happens when it isn't.
     static func loadCredentials() throws -> (credentials: OAuthCredentials, source: CredentialsSource) {
         if let cached = CredentialsCache.load() {
             LogService.shared.log(.debug, .keychain, "Using cached credentials (skipping live Keychain read to avoid a repeated access prompt)")
@@ -123,29 +121,84 @@ struct KeychainService {
         return credentials
     }
 
+    /// Reads the item's secret data via a shelled-out `/usr/bin/security`
+    /// call rather than an in-process `SecItemCopyMatching`. The classic
+    /// login-keychain ACL check binds to the *calling process's* code
+    /// signature — Burnrate.app asking directly is a foreign, frequently-
+    /// rebuilt signature that macOS re-confirms via an "Allow access" prompt,
+    /// while Apple's own `/usr/bin/security` binary is the tool the ACL
+    /// dialog itself offers to run as, so it reads items lacking an explicit
+    /// per-app trust list without prompting. Bounded by a timeout: macOS has
+    /// been observed to hang `security` subprocesses indefinitely in some
+    /// environments, which would otherwise deadlock the poll loop.
     private static func readRawItem() throws -> (json: [String: Any], modificationDate: Date?) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecReturnData as String: true,
-            kSecReturnAttributes as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess,
-              let attributes = item as? [String: Any],
-              let data = attributes[kSecValueData as String] as? Data
-        else {
-            throw KeychainError.notFound(status: status)
+        guard let result = runSecurityCommand(arguments: [
+            "find-generic-password",
+            "-s", service,
+            "-a", NSUserName(),
+            "-w"
+        ]) else {
+            throw KeychainError.notFound(status: errSecIO)
         }
 
-        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+        guard !result.timedOut, result.exitCode == 0 else {
+            throw KeychainError.notFound(status: OSStatus(result.exitCode))
+        }
+
+        let raw = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty,
+              let data = raw.data(using: .utf8),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else {
             throw KeychainError.invalidData
         }
 
-        return (json, attributes[kSecAttrModificationDate as String] as? Date)
+        return (json, itemModificationDate())
+    }
+
+    private struct SecurityCommandResult {
+        let exitCode: Int32
+        let stdout: String
+        let timedOut: Bool
+    }
+
+    private static let securityCommandTimeout: TimeInterval = 3.0
+
+    private static func runSecurityCommand(arguments: [String]) -> SecurityCommandResult? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = arguments
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            process.waitUntilExit()
+            group.leave()
+        }
+
+        if group.wait(timeout: .now() + securityCommandTimeout) == .timedOut {
+            process.terminate()
+            _ = group.wait(timeout: .now() + 0.5)
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            return SecurityCommandResult(exitCode: -1, stdout: "", timedOut: true)
+        }
+
+        let stdoutData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        return SecurityCommandResult(
+            exitCode: process.terminationStatus,
+            stdout: String(data: stdoutData, encoding: .utf8) ?? "",
+            timedOut: false
+        )
     }
 
     private static func parse(_ json: [String: Any]) throws -> OAuthCredentials {
