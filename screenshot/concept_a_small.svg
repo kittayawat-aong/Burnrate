@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e222c"/>
+      <stop offset="1" stop-color="#0c0e13"/>
+    </linearGradient>
+    <linearGradient id="arc" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffb340"/>
+      <stop offset="0.55" stop-color="#ff8c2e"/>
+      <stop offset="1" stop-color="#ff4d1c"/>
+    </linearGradient>
+    <radialGradient id="core" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.6" stop-color="#ffe9a8"/>
+      <stop offset="1" stop-color="#ffb340"/>
+    </radialGradient>
+  </defs>
+
+  <!-- small-size variant: thicker strokes, bigger core, no sheen/halo -->
+  <rect x="60" y="60" width="904" height="904" rx="204" fill="url(#bg)"/>
+
+  <path d="M 342.29 681.71 A 240 240 0 1 1 681.71 681.71"
+        fill="none" stroke="#2e3442" stroke-width="130" stroke-linecap="round"/>
+
+  <path d="M 342.29 681.71 A 240 240 0 1 1 706.16 370.93"
+        fill="none" stroke="url(#arc)" stroke-width="130" stroke-linecap="round"/>
+
+  <circle cx="706.16" cy="370.93" r="78" fill="url(#core)"/>
+</svg>
