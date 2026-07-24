@@ -9,7 +9,7 @@ A menu bar app that shows [Claude Code](https://claude.ai/code) and Codex usage 
 
 ## Features
 
-- **Menu bar** — flame icon + session % (traffic-light colored) + countdown to reset
+- **Menu bar** — choose one compact provider display (Claude or ChatGPT/Codex) with usage % and reset countdown
 - **Codex support** — reads usage windows and account details through the local Codex app server; credentials never leave Codex
 - **Popover** — session & weekly progress bars with reset times (day of week), today's token breakdown, account info
 - **Notifications** — alert when usage crosses a configurable threshold; works even when the app is in the foreground
@@ -84,7 +84,7 @@ Claude and Codex can be enabled independently in **Settings → Display**. Codex
 | Tab | Options |
 |-----|---------|
 | General | Launch at login |
-| Menu Bar | Show session %, countdown, weekly % |
+| Display | Enable data sources, choose the menu bar provider, and configure popover rows |
 | Popover | Show account info, weekly usage, token breakdown |
 | Notifications | Enable alerts, set threshold % |
 | Polling | Poll interval (1–30 min) |

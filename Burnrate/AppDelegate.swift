@@ -134,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = flameIcon()
+            button.image = providerIcon()
             button.imagePosition = .imageLeading
             button.imageHugsTitle = true
             button.title = "…"
@@ -143,11 +143,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The "burn" brand icon shown before the usage numbers.
-    private func flameIcon() -> NSImage? {
+    /// Provider-specific icon shown before the usage numbers.
+    private func providerIcon() -> NSImage? {
+        let (symbol, color, description): (String, NSColor, String) = switch settings.menuBarProvider {
+        case .claude:
+            ("sparkles", .systemOrange, "Claude usage")
+        case .codex:
+            ("terminal.fill", .systemBlue, "ChatGPT Codex usage")
+        }
         let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
-            .applying(.init(paletteColors: [.systemOrange]))
-        let image = NSImage(systemSymbolName: "flame.fill", accessibilityDescription: "Burnrate")?
+            .applying(.init(paletteColors: [color]))
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)?
             .withSymbolConfiguration(config)
         image?.isTemplate = false
         return image
@@ -170,11 +176,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateStatusItem() {
         guard let button = statusItem.button else { return }
+        button.image = providerIcon()
 
         // A leading space gives the flame icon a little breathing room.
         let title = NSMutableAttributedString(string: " ")
 
-        if settings.claudeEnabled, let session = viewModel.effectiveSession {
+        if settings.menuBarProvider == .claude,
+           settings.claudeEnabled,
+           let session = viewModel.effectiveSession {
             // Session: percentage (traffic-light colored) and/or reset countdown.
             if settings.menuBarShowSession {
                 title.append(segment("\(Int(session.utilization))%", color: UsageColor.nsColor(for: session.utilization)))
@@ -185,16 +194,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        if settings.claudeEnabled, settings.menuBarShowWeekly, let weekly = viewModel.effectiveWeekly {
+        if settings.menuBarProvider == .claude,
+           settings.claudeEnabled,
+           settings.menuBarShowWeekly,
+           let weekly = viewModel.effectiveWeekly {
             if title.length > 1 { title.append(NSAttributedString(string: "  ")) }
             title.append(segment("📅", color: .secondaryLabelColor))
             title.append(segment("\(Int(weekly.utilization))%", color: UsageColor.nsColor(for: weekly.utilization)))
         }
 
-        if settings.codexEnabled, settings.menuBarShowCodex, let codex = viewModel.codexLimits.first {
-            if title.length > 1 { title.append(NSAttributedString(string: "  ")) }
-            title.append(segment("X ", color: .secondaryLabelColor))
-            title.append(segment("\(Int(codex.period.utilization))%", color: UsageColor.nsColor(for: codex.period.utilization)))
+        if settings.menuBarProvider == .codex,
+           settings.codexEnabled,
+           let codex = viewModel.codexLimits.first {
+            if settings.menuBarShowSession {
+                title.append(segment("\(Int(codex.period.utilization))%", color: UsageColor.nsColor(for: codex.period.utilization)))
+            }
+            if settings.menuBarShowCountdown, let resetsAt = codex.period.resetsAt {
+                let prefix = settings.menuBarShowSession ? " · " : ""
+                title.append(segment(prefix + TimeFormatter.compactCountdown(to: resetsAt), color: .secondaryLabelColor))
+            }
         }
 
         // Nothing to show (no data yet, or all toggles off with no data).
@@ -304,7 +322,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = NSWindow(contentViewController: hosting)
             window.title = "Burnrate Settings"
             window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
-            window.minSize = NSSize(width: 460, height: 360)
+            window.minSize = NSSize(width: 680, height: 460)
+            window.setContentSize(NSSize(width: 720, height: 500))
             window.isReleasedWhenClosed = false
             window.center()
             settingsWindow = window

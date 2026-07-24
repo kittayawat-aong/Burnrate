@@ -1,49 +1,103 @@
 import SwiftUI
 
-/// Preferences window content. Uses a custom top icon tab bar (rather than the
-/// bordered SwiftUI `TabView`) so it renders cleanly inside an AppKit window.
-/// Each tab's content lives in its own file under Views/Settings/.
+/// Preferences window content. A sidebar keeps the growing set of settings
+/// scannable and gives each pane enough horizontal room.
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @State private var tab: Tab = .general
 
     var body: some View {
-        VStack(spacing: 0) {
-            tabBar
+        HStack(spacing: 0) {
+            sidebar
             Divider()
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            VStack(spacing: 0) {
+                paneHeader
+                Divider()
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
         }
-        .frame(minWidth: 460, idealWidth: 460, minHeight: 360, idealHeight: 360)
+        .frame(minWidth: 680, idealWidth: 720, minHeight: 460, idealHeight: 500)
     }
 
-    // MARK: - Tab bar
+    // MARK: - Sidebar
 
-    private var tabBar: some View {
-        HStack(spacing: 4) {
-            ForEach(Tab.allCases) { item in
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 9) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.orange)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Burnrate")
+                        .font(.headline)
+                    Text("Settings")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+
+            sidebarGroup("APP", tabs: [.general, .display, .notifications])
+            sidebarGroup("INTEGRATIONS", tabs: [.webhook])
+            sidebarGroup("CLAUDE CODE", tabs: [.autoMode])
+            sidebarGroup("SYSTEM", tabs: [.advanced, .logs, .about])
+
+            Spacer()
+        }
+        .padding(.bottom, 12)
+        .frame(width: 176)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+    }
+
+    private func sidebarGroup(_ title: String, tabs: [Tab]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 14)
+
+            ForEach(tabs) { item in
                 Button {
                     tab = item
                 } label: {
-                    VStack(spacing: 3) {
+                    HStack(spacing: 9) {
                         Image(systemName: item.icon)
-                            .font(.system(size: 18))
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 18)
                         Text(item.title)
-                            .font(.caption)
+                            .font(.callout)
+                        Spacer()
                     }
-                    .frame(width: 52, height: 46)
-                    .foregroundColor(tab == item ? .accentColor : .primary)
+                    .foregroundColor(tab == item ? .white : .primary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
                     .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(tab == item ? Color.secondary.opacity(0.18) : .clear)
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(tab == item ? Color.accentColor : .clear)
                     )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .padding(.horizontal, 6)
             }
         }
-        .padding(8)
-        .frame(maxWidth: .infinity)
+    }
+
+    private var paneHeader: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tab.title)
+                    .font(.title2.weight(.semibold))
+                Text(tab.subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 66)
     }
 
     // MARK: - Content
@@ -97,6 +151,19 @@ struct SettingsView: View {
             case .autoMode: return "checkmark.shield"
             case .logs: return "doc.text.magnifyingglass"
             case .about: return "info.circle"
+            }
+        }
+
+        var subtitle: String {
+            switch self {
+            case .general: return "Startup and Claude Code preferences"
+            case .display: return "Choose what appears in the menu bar and popover"
+            case .notifications: return "Usage alerts and thresholds"
+            case .webhook: return "Send usage updates to another service"
+            case .advanced: return "Polling and display simulation"
+            case .autoMode: return "Claude Code command classification rules"
+            case .logs: return "Inspect Burnrate activity and errors"
+            case .about: return "Version, project, and contact information"
             }
         }
     }

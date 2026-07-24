@@ -11,7 +11,7 @@ struct AboutTab: View {
                 .foregroundColor(.orange)
             Text("Burnrate")
                 .font(.title2.bold())
-            Text("Claude Code usage in your menu bar")
+            Text("Claude Code and Codex usage in your menu bar")
                 .font(.callout)
                 .foregroundColor(.secondary)
             Text("Version \(AppInfo.version)")

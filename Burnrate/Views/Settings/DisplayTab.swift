@@ -6,27 +6,50 @@ struct DisplayTab: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Claude Code", isOn: $settings.claudeEnabled)
-                Toggle("Codex", isOn: $settings.codexEnabled)
+                sourceRow(
+                    title: "Claude Code",
+                    detail: "Session, weekly usage, and local token totals",
+                    symbol: "sparkles",
+                    color: .orange,
+                    isOn: $settings.claudeEnabled
+                )
+                sourceRow(
+                    title: "ChatGPT / Codex",
+                    detail: "Codex usage from your ChatGPT plan",
+                    symbol: "terminal.fill",
+                    color: .blue,
+                    isOn: $settings.codexEnabled
+                )
             } header: {
-                Text("Providers")
+                Text("Data sources")
             } footer: {
-                captionFooter("Burnrate reads each provider independently. At least one should be enabled.")
+                captionFooter("Enabled sources appear together in the popover. They refresh independently.")
             }
 
             Section {
-                Toggle("Session percentage", isOn: $settings.menuBarShowSession)
-                    .disabled(!settings.claudeEnabled)
+                Picker("Show usage from", selection: $settings.menuBarProvider) {
+                    ForEach(MenuBarProvider.allCases) { provider in
+                        Text(provider.title).tag(provider)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Toggle("Usage percentage", isOn: $settings.menuBarShowSession)
                 Toggle("Reset countdown", isOn: $settings.menuBarShowCountdown)
-                    .disabled(!settings.claudeEnabled)
-                Toggle("Weekly percentage", isOn: $settings.menuBarShowWeekly)
-                    .disabled(!settings.claudeEnabled)
-                Toggle("Codex usage", isOn: $settings.menuBarShowCodex)
-                    .disabled(!settings.codexEnabled)
+                if settings.menuBarProvider == .claude {
+                    Toggle("Weekly percentage", isOn: $settings.menuBarShowWeekly)
+                }
+
+                HStack(spacing: 7) {
+                    Image(systemName: "info.circle")
+                    Text(menuBarHint)
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
             } header: {
-                Text("Show in the menu bar")
+                Text("Menu bar")
             } footer: {
-                captionFooter("The flame icon is always shown.")
+                captionFooter("Only one provider is shown so the menu bar stays compact. Its icon changes with your selection; the popover still shows every enabled source.")
             }
 
             Section("Show in the popover") {
@@ -42,5 +65,47 @@ struct DisplayTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var menuBarHint: String {
+        switch settings.menuBarProvider {
+        case .claude:
+            return settings.claudeEnabled
+                ? "Showing Claude usage beside the flame."
+                : "Claude is disabled above. Enable it to show live usage."
+        case .codex:
+            return settings.codexEnabled
+                ? "Showing ChatGPT Codex usage beside the flame."
+                : "ChatGPT / Codex is disabled above. Enable it to show live usage."
+        }
+    }
+
+    private func sourceRow(
+        title: String,
+        detail: String,
+        symbol: String,
+        color: Color,
+        isOn: Binding<Bool>
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 30, height: 30)
+                .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+        }
+        .padding(.vertical, 3)
     }
 }

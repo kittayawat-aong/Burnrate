@@ -1,6 +1,19 @@
 import Foundation
 import Combine
 
+enum MenuBarProvider: String, CaseIterable, Identifiable {
+    case claude
+    case codex
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .claude: return "Claude"
+        case .codex: return "ChatGPT"
+        }
+    }
+}
+
 /// User preferences for what Burnrate displays. Persisted to UserDefaults and
 /// shared across the menu bar, popover, and settings window.
 @MainActor
@@ -17,7 +30,9 @@ final class AppSettings: ObservableObject {
     @Published var menuBarShowSession: Bool { didSet { defaults.set(menuBarShowSession, forKey: Keys.menuBarShowSession) } }
     @Published var menuBarShowCountdown: Bool { didSet { defaults.set(menuBarShowCountdown, forKey: Keys.menuBarShowCountdown) } }
     @Published var menuBarShowWeekly: Bool { didSet { defaults.set(menuBarShowWeekly, forKey: Keys.menuBarShowWeekly) } }
-    @Published var menuBarShowCodex: Bool { didSet { defaults.set(menuBarShowCodex, forKey: Keys.menuBarShowCodex) } }
+    @Published var menuBarProvider: MenuBarProvider {
+        didSet { defaults.set(menuBarProvider.rawValue, forKey: Keys.menuBarProvider) }
+    }
 
     // Popover
     @Published var popoverShowAccount: Bool { didSet { defaults.set(popoverShowAccount, forKey: Keys.popoverShowAccount) } }
@@ -60,7 +75,9 @@ final class AppSettings: ObservableObject {
         menuBarShowSession = bool(Keys.menuBarShowSession, default: true)
         menuBarShowCountdown = bool(Keys.menuBarShowCountdown, default: true)
         menuBarShowWeekly = bool(Keys.menuBarShowWeekly, default: false)
-        menuBarShowCodex = bool(Keys.menuBarShowCodex, default: true)
+        menuBarProvider = MenuBarProvider(
+            rawValue: store.string(forKey: Keys.menuBarProvider) ?? ""
+        ) ?? .claude
         popoverShowAccount = bool(Keys.popoverShowAccount, default: true)
         popoverShowWeekly = bool(Keys.popoverShowWeekly, default: true)
         popoverShowTokens = bool(Keys.popoverShowTokens, default: true)
@@ -81,7 +98,7 @@ final class AppSettings: ObservableObject {
         static let menuBarShowSession = "menuBarShowSession"
         static let menuBarShowCountdown = "menuBarShowCountdown"
         static let menuBarShowWeekly = "menuBarShowWeekly"
-        static let menuBarShowCodex = "menuBarShowCodex"
+        static let menuBarProvider = "menuBarProvider"
         static let popoverShowAccount = "popoverShowAccount"
         static let popoverShowWeekly = "popoverShowWeekly"
         static let popoverShowTokens = "popoverShowTokens"
