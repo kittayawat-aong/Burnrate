@@ -9,10 +9,15 @@ final class AppSettings: ObservableObject {
 
     private let defaults = UserDefaults.standard
 
+    // Providers
+    @Published var claudeEnabled: Bool { didSet { defaults.set(claudeEnabled, forKey: Keys.claudeEnabled) } }
+    @Published var codexEnabled: Bool { didSet { defaults.set(codexEnabled, forKey: Keys.codexEnabled) } }
+
     // Menu bar
     @Published var menuBarShowSession: Bool { didSet { defaults.set(menuBarShowSession, forKey: Keys.menuBarShowSession) } }
     @Published var menuBarShowCountdown: Bool { didSet { defaults.set(menuBarShowCountdown, forKey: Keys.menuBarShowCountdown) } }
     @Published var menuBarShowWeekly: Bool { didSet { defaults.set(menuBarShowWeekly, forKey: Keys.menuBarShowWeekly) } }
+    @Published var menuBarShowCodex: Bool { didSet { defaults.set(menuBarShowCodex, forKey: Keys.menuBarShowCodex) } }
 
     // Popover
     @Published var popoverShowAccount: Bool { didSet { defaults.set(popoverShowAccount, forKey: Keys.popoverShowAccount) } }
@@ -50,9 +55,12 @@ final class AppSettings: ObservableObject {
             store.object(forKey: key) == nil ? fallback : store.integer(forKey: key)
         }
         // didSet does not fire during init, so these are pure loads.
+        claudeEnabled = bool(Keys.claudeEnabled, default: true)
+        codexEnabled = bool(Keys.codexEnabled, default: true)
         menuBarShowSession = bool(Keys.menuBarShowSession, default: true)
         menuBarShowCountdown = bool(Keys.menuBarShowCountdown, default: true)
         menuBarShowWeekly = bool(Keys.menuBarShowWeekly, default: false)
+        menuBarShowCodex = bool(Keys.menuBarShowCodex, default: true)
         popoverShowAccount = bool(Keys.popoverShowAccount, default: true)
         popoverShowWeekly = bool(Keys.popoverShowWeekly, default: true)
         popoverShowTokens = bool(Keys.popoverShowTokens, default: true)
@@ -68,9 +76,12 @@ final class AppSettings: ObservableObject {
     }
 
     private enum Keys {
+        static let claudeEnabled = "claudeEnabled"
+        static let codexEnabled = "codexEnabled"
         static let menuBarShowSession = "menuBarShowSession"
         static let menuBarShowCountdown = "menuBarShowCountdown"
         static let menuBarShowWeekly = "menuBarShowWeekly"
+        static let menuBarShowCodex = "menuBarShowCodex"
         static let popoverShowAccount = "popoverShowAccount"
         static let popoverShowWeekly = "popoverShowWeekly"
         static let popoverShowTokens = "popoverShowTokens"

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Burnrate is a macOS menu bar app (SwiftUI + AppKit, `NSStatusItem`) that shows Claude Code usage — session %, weekly %, reset countdowns, token breakdown — by reading local credentials/logs and calling an undocumented Anthropic endpoint. No backend; everything runs client-side on the user's Mac.
+Burnrate is a macOS menu bar app (SwiftUI + AppKit, `NSStatusItem`) that shows Claude Code and Codex usage. Claude data comes from local credentials/logs plus an undocumented Anthropic endpoint. Codex data comes from the local `codex app-server` protocol. No backend; everything runs client-side on the user's Mac.
 
 ## Build & run
 
@@ -43,6 +43,8 @@ Burnrate/
 │   ├── KeychainService.swift      # reads "Claude Code-credentials" from the login Keychain
 │   ├── CredentialsCache.swift     # last-known-good credentials, used when a Keychain read fails transiently
 │   ├── UsageAPIService.swift      # GET https://api.anthropic.com/api/oauth/usage
+│   ├── CodexUsageService.swift    # account/rateLimits/read + account/read over codex app-server stdio
+│   ├── CodexUsageCache.swift      # last-known-good Codex usage/account snapshot
 │   ├── AccountService.swift       # parses ~/.claude.json for account/plan info
 │   ├── JournalService.swift       # parses ~/.claude/projects/**/*.jsonl for today's token counts
 │   ├── ClaudeSettingsService.swift# reads/writes ~/.claude/settings.json (e.g. includeCoAuthoredBy)
@@ -58,7 +60,8 @@ Burnrate/
 
 Key mechanics worth knowing before touching polling/notification code:
 
-- **Polling loop** (`AppDelegate.poll()`): calls `viewModel.refresh()`, then reschedules — normal interval from settings, or a fixed 10-minute backoff on HTTP 429. On success it also arms a one-shot `resetTimer` that fires exactly at the soonest `resetsAt` so usage refreshes right at the period boundary rather than waiting for the next poll tick.
+- **Polling loop** (`AppDelegate.poll()`): refreshes enabled Claude and Codex providers concurrently, then reschedules — normal interval from settings, or a fixed 10-minute backoff on Claude HTTP 429. On success it also arms a one-shot `resetTimer` for the soonest enabled-provider reset.
+- **Codex app server**: `CodexUsageService` launches the installed Codex CLI and keeps stdin open until both async response IDs arrive. Do not close stdin immediately: app-server treats EOF as shutdown and may emit only the initialize response.
 - **401 handling**: whether re-login is required is decided by the live `/usage` call's response, *not* a locally computed `expiresAt` — Keychain reads can fail transiently even when the token is still valid (see `KeychainService` / `CredentialsCache` fallback).
 - **Debug simulation**: `AppSettings.debugSimulate` + `debugSessionPercent`/`debugWeeklyPercent` override the displayed values via `UsageViewModel.effectiveSession`/`effectiveWeekly` without touching real quota or the network fetch — always read through `effective*`, not `session`/`weekly` directly, when rendering UI.
 - **Notification dedup**: threshold alerts and reset alerts are keyed by the period's `resetsAt` (`notifiedSessionPeriod`/`notifiedWeeklyPeriod`), truncated to the minute, so each usage period fires at most one alert regardless of poll frequency.
@@ -71,3 +74,4 @@ Key mechanics worth knowing before touching polling/notification code:
 3. `~/.claude/projects/**/*.jsonl` → per-line `message.usage` token counts, summed for "today" (`JournalService`).
 4. `~/.claude.json` → account email/plan (`AccountService`).
 5. `~/.claude/settings.json` → read/write for in-app Claude Code settings toggles (`ClaudeSettingsService`).
+6. Local `codex app-server --stdio` → Codex account, plan, usage percentages, window durations, and reset timestamps. Burnrate never reads `~/.codex/auth.json`.

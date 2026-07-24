@@ -36,7 +36,7 @@ extension UsagePopover {
     }
 
     var updatedText: String {
-        guard let updated = viewModel.lastUpdated else { return "Not yet updated" }
+        guard let updated = viewModel.mostRecentUpdate else { return "Not yet updated" }
         return "Updated \(TimeFormatter.clock(updated, use24Hour: settings.use24HourClock))"
     }
 }

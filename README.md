@@ -1,7 +1,7 @@
 # 🔥 Burnrate
-**Claude Code Usage Monitor for macOS** · Built with [Claude](https://claude.ai)
+**Claude Code & Codex Usage Monitor for macOS** · Built with AI coding agents
 
-A menu bar app that shows your [Claude Code](https://claude.ai/code) usage at a glance — session %, reset countdown, and token breakdown.
+A menu bar app that shows [Claude Code](https://claude.ai/code) and Codex usage at a glance — usage %, reset countdowns, account details, and Claude token breakdown.
 
 ![Burnrate popover](screenshot/SCR-20260630-bplp.png)
 
@@ -10,6 +10,7 @@ A menu bar app that shows your [Claude Code](https://claude.ai/code) usage at a 
 ## Features
 
 - **Menu bar** — flame icon + session % (traffic-light colored) + countdown to reset
+- **Codex support** — reads usage windows and account details through the local Codex app server; credentials never leave Codex
 - **Popover** — session & weekly progress bars with reset times (day of week), today's token breakdown, account info
 - **Notifications** — alert when usage crosses a configurable threshold; works even when the app is in the foreground
 - **Persists last fetch** — shows cached values on 429 / offline with a stale warning
@@ -23,7 +24,7 @@ A menu bar app that shows your [Claude Code](https://claude.ai/code) usage at a 
 ## Requirements
 
 - macOS 13 Ventura or later
-- [Claude Code](https://claude.ai/code) installed and signed in
+- [Claude Code](https://claude.ai/code) and/or Codex installed and signed in
 
 ## Installation
 
@@ -74,6 +75,9 @@ On first launch macOS may prompt to allow access to the `Claude Code-credentials
 2. Calls `GET https://api.anthropic.com/api/oauth/usage` to fetch session & weekly utilization
 3. Parses `~/.claude/projects/**/*.jsonl` for today's token counts
 4. Reads `~/.claude.json` for account info (email, plan, etc.)
+5. Starts `codex app-server` locally and reads `account/rateLimits/read` plus `account/read`
+
+Claude and Codex can be enabled independently in **Settings → Display**. Codex authentication remains owned by Codex; Burnrate does not read `~/.codex/auth.json`.
 
 ## Settings
 
@@ -95,11 +99,14 @@ Burnrate/
 ├── AppDelegate.swift          # NSStatusItem, NSPopover, polling, wake observer
 ├── Models/
 │   ├── UsageResponse.swift    # defensive parser for /api/oauth/usage
+│   ├── CodexUsage.swift       # Codex usage windows and account
 │   ├── AccountInfo.swift      # ~/.claude.json account fields
 │   └── TokenSummary.swift
 ├── Services/
 │   ├── KeychainService.swift  # reads Claude Code-credentials
 │   ├── UsageAPIService.swift  # OAuth usage endpoint
+│   ├── CodexUsageService.swift# local codex app-server client
+│   ├── CodexUsageCache.swift  # last-known-good Codex snapshot
 │   ├── AccountService.swift   # parses ~/.claude.json
 │   ├── JournalService.swift   # parses ~/.claude/projects/**/*.jsonl
 │   ├── NotificationService.swift
@@ -133,7 +140,7 @@ When enabled, Burnrate sends a `POST` with `Content-Type: application/json` afte
 }
 ```
 
-Compatible with Make, n8n, Zapier, or any HTTP endpoint.
+Compatible with Make, n8n, Zapier, or any HTTP endpoint. The current webhook payload contains Claude usage and Claude journal tokens.
 
 ## Notes
 

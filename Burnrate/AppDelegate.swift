@@ -174,7 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A leading space gives the flame icon a little breathing room.
         let title = NSMutableAttributedString(string: " ")
 
-        if let session = viewModel.effectiveSession {
+        if settings.claudeEnabled, let session = viewModel.effectiveSession {
             // Session: percentage (traffic-light colored) and/or reset countdown.
             if settings.menuBarShowSession {
                 title.append(segment("\(Int(session.utilization))%", color: UsageColor.nsColor(for: session.utilization)))
@@ -185,16 +185,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        if settings.menuBarShowWeekly, let weekly = viewModel.effectiveWeekly {
+        if settings.claudeEnabled, settings.menuBarShowWeekly, let weekly = viewModel.effectiveWeekly {
             if title.length > 1 { title.append(NSAttributedString(string: "  ")) }
             title.append(segment("📅", color: .secondaryLabelColor))
             title.append(segment("\(Int(weekly.utilization))%", color: UsageColor.nsColor(for: weekly.utilization)))
         }
 
+        if settings.codexEnabled, settings.menuBarShowCodex, let codex = viewModel.codexLimits.first {
+            if title.length > 1 { title.append(NSAttributedString(string: "  ")) }
+            title.append(segment("X ", color: .secondaryLabelColor))
+            title.append(segment("\(Int(codex.period.utilization))%", color: UsageColor.nsColor(for: codex.period.utilization)))
+        }
+
         // Nothing to show (no data yet, or all toggles off with no data).
         if title.length <= 1 {
-            if viewModel.effectiveSession == nil && viewModel.effectiveWeekly == nil {
-                let symbol = viewModel.errorMessage != nil && !viewModel.isLoading ? "⚠︎" : "…"
+            if viewModel.effectiveSession == nil && viewModel.effectiveWeekly == nil && viewModel.codexLimits.isEmpty {
+                let hasError = (settings.claudeEnabled && viewModel.errorMessage != nil)
+                    || (settings.codexEnabled && viewModel.codexErrorMessage != nil)
+                let symbol = hasError && !viewModel.isAnyLoading ? "⚠︎" : "…"
                 title.append(segment(symbol, color: .secondaryLabelColor))
             }
         }
@@ -214,14 +222,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func tooltip() -> String {
-        var lines = ["Burnrate — Claude usage"]
-        if let s = viewModel.session {
+        var lines = ["Burnrate — AI coding usage"]
+        if settings.claudeEnabled, let s = viewModel.session {
             lines.append("Session (5h): \(Int(s.utilization))%")
         }
-        if let w = viewModel.weekly {
+        if settings.claudeEnabled, let w = viewModel.weekly {
             lines.append("Weekly (7d): \(Int(w.utilization))%")
         }
-        if let error = viewModel.errorMessage {
+        if settings.codexEnabled {
+            for limit in viewModel.codexLimits {
+                lines.append("Codex \(limit.label): \(Int(limit.period.utilization))%")
+            }
+        }
+        if settings.claudeEnabled, let error = viewModel.errorMessage {
+            lines.append(error)
+        }
+        if settings.codexEnabled, let error = viewModel.codexErrorMessage {
             lines.append(error)
         }
         return lines.joined(separator: "\n")
@@ -327,7 +343,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isRefreshing = true
         Task { @MainActor in
             defer { isRefreshing = false }
-            let outcome = await viewModel.refresh()
+            let claudeTask = settings.claudeEnabled
+                ? Task { @MainActor in await viewModel.refresh() }
+                : nil
+            let codexTask = settings.codexEnabled
+                ? Task { @MainActor in await viewModel.refreshCodex() }
+                : nil
+
+            let outcome = await claudeTask?.value ?? .success
+            let codexSucceeded = await codexTask?.value ?? false
             let next: TimeInterval
             if case .rateLimited(let retryAfter) = outcome {
                 next = min(max(retryAfter ?? backoffInterval, backoffInterval), maxBackoffInterval)
@@ -336,7 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 next = normalInterval
             }
             scheduleNext(after: next)
-            if outcome == .success {
+            if outcome == .success || codexSucceeded {
                 scheduleResetTimer()
             }
         }
@@ -349,7 +373,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         resetTimer?.invalidate()
         resetTimer = nil
 
-        let dates = [viewModel.session?.resetsAt, viewModel.weekly?.resetsAt].compactMap { $0 }
+        let claudeDates = settings.claudeEnabled
+            ? [viewModel.session?.resetsAt, viewModel.weekly?.resetsAt].compactMap { $0 }
+            : []
+        let codexDates = settings.codexEnabled
+            ? viewModel.codexLimits.compactMap(\.period.resetsAt)
+            : []
+        let dates = claudeDates + codexDates
         guard let soonest = dates.min(), soonest.timeIntervalSinceNow > 0 else { return }
 
         LogService.shared.log(.debug, .polling, "Reset timer armed for \(Self.logFormatter.string(from: soonest)) (in \(Int(soonest.timeIntervalSinceNow))s)")

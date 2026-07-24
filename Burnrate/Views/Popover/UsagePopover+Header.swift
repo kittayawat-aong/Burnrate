@@ -9,7 +9,7 @@ extension UsagePopover {
             Text("Burnrate")
                 .font(.headline)
             Spacer()
-            if viewModel.isLoading {
+            if viewModel.isAnyLoading {
                 ProgressView()
                     .scaleEffect(0.6)
                     .frame(width: 16, height: 16)
@@ -26,6 +26,33 @@ extension UsagePopover {
                     .font(.subheadline.weight(.medium))
             }
 
+            ForEach(account.displayRows, id: \.label) { row in
+                HStack(alignment: .top, spacing: 8) {
+                    Text(row.label)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Spacer(minLength: 8)
+                    Text(row.value)
+                        .font(.caption)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+        }
+    }
+
+    func providerHeader(_ title: String, symbol: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .foregroundColor(color)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+        }
+    }
+
+    func codexAccountSection(_ account: CodexAccountInfo) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
             ForEach(account.displayRows, id: \.label) { row in
                 HStack(alignment: .top, spacing: 8) {
                     Text(row.label)

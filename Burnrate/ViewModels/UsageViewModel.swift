@@ -24,6 +24,16 @@ final class UsageViewModel: ObservableObject {
     @Published private(set) var nextUpdate: Date?
     @Published private(set) var errorMessage: String?
     @Published private(set) var isLoading = false
+    @Published private(set) var codexLimits: [CodexUsageLimit] = []
+    @Published private(set) var codexAccount: CodexAccountInfo?
+    @Published private(set) var codexLastUpdated: Date?
+    @Published private(set) var codexErrorMessage: String?
+    @Published private(set) var isCodexLoading = false
+
+    var isAnyLoading: Bool { isLoading || isCodexLoading }
+    var mostRecentUpdate: Date? {
+        [lastUpdated, codexLastUpdated].compactMap { $0 }.max()
+    }
 
     /// Called after any state change so AppKit (status item) can redraw.
     var onUpdate: (() -> Void)?
@@ -35,6 +45,11 @@ final class UsageViewModel: ObservableObject {
             session = UsagePeriod(utilization: cached.sessionUtilization, resetsAt: cached.sessionResetsAt)
             weekly = UsagePeriod(utilization: cached.weeklyUtilization, resetsAt: cached.weeklyResetsAt)
             lastUpdated = cached.lastUpdated
+        }
+        if let cached = CodexUsageCache.load() {
+            codexLimits = cached.snapshot.limits
+            codexAccount = cached.snapshot.account
+            codexLastUpdated = cached.lastUpdated
         }
     }
 
@@ -69,6 +84,7 @@ final class UsageViewModel: ObservableObject {
     // which automatically allows a fresh alert for the new period.
     private var notifiedSessionPeriod: Date?
     private var notifiedWeeklyPeriod: Date?
+    private var notifiedCodexPeriods: [String: Date] = [:]
 
     // Set when a refresh ends in .tokenExpired: the Keychain item's
     // modification date at that moment. While the item stays unchanged a
@@ -183,6 +199,44 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
+    /// Refreshes Codex independently from Claude. The local app-server owns
+    /// authentication, so Burnrate never reads or refreshes Codex tokens.
+    func refreshCodex() async -> Bool {
+        isCodexLoading = true
+        notifyUpdate()
+        defer {
+            isCodexLoading = false
+            notifyUpdate()
+        }
+
+        do {
+            let previous = Dictionary(uniqueKeysWithValues: codexLimits.map { ($0.id, $0.period.resetsAt) })
+            let snapshot = try await CodexUsageService.fetch()
+            codexLimits = snapshot.limits
+            codexAccount = snapshot.account
+            codexLastUpdated = Date()
+            codexErrorMessage = snapshot.limits.isEmpty ? "Codex returned no active usage windows" : nil
+            CodexUsageCache.save(snapshot, lastUpdated: codexLastUpdated!)
+
+            for limit in snapshot.limits {
+                if periodDidReset(prev: previous[limit.id] ?? nil, next: limit.period.resetsAt) {
+                    notifiedCodexPeriods[limit.id] = nil
+                    NotificationService.send(
+                        title: "Codex usage reset",
+                        body: "\(limit.label) has reset — you're back to 0%."
+                    )
+                }
+            }
+            runCodexThresholdCheck()
+            LogService.shared.log(.info, .polling, "Codex refresh succeeded — \(snapshot.limits.count) usage window(s)")
+            return true
+        } catch {
+            codexErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            LogService.shared.log(.error, .polling, "Codex refresh failed: \(codexErrorMessage ?? "unknown error")")
+            return false
+        }
+    }
+
     private func notifyUpdate() {
         onUpdate?()
     }
@@ -256,6 +310,26 @@ final class UsageViewModel: ObservableObject {
             period: effectiveWeekly,
             notifiedPeriod: &notifiedWeeklyPeriod
         )
+        runCodexThresholdCheck()
+    }
+
+    private func runCodexThresholdCheck() {
+        let settings = AppSettings.shared
+        guard settings.notifyEnabled, settings.codexEnabled else { return }
+
+        for limit in codexLimits {
+            guard limit.period.utilization >= settings.notifyThreshold else { continue }
+            let raw = limit.period.resetsAt ?? .distantFuture
+            let periodKey = Date(timeIntervalSinceReferenceDate:
+                (raw.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60)
+            guard notifiedCodexPeriods[limit.id] != periodKey else { continue }
+
+            NotificationService.send(
+                title: "Codex usage high",
+                body: "\(limit.label) is at \(Int(limit.period.utilization))%."
+            )
+            notifiedCodexPeriods[limit.id] = periodKey
+        }
     }
 
     private func checkThreshold(window: String, period: UsagePeriod?, notifiedPeriod: inout Date?) {
