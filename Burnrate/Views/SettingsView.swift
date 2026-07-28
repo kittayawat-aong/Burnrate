@@ -40,7 +40,7 @@ struct SettingsView: View {
             .padding(.top, 14)
 
             sidebarGroup("APP", tabs: [.general, .display, .notifications])
-            sidebarGroup("INTEGRATIONS", tabs: [.webhook])
+            sidebarGroup("INTEGRATIONS", tabs: [.webhook, .mqtt])
             sidebarGroup("CLAUDE CODE", tabs: [.autoMode])
             sidebarGroup("SYSTEM", tabs: [.advanced, .logs, .about])
 
@@ -113,6 +113,8 @@ struct SettingsView: View {
             NotificationsTab(settings: settings)
         case .webhook:
             WebhookTab(settings: settings)
+        case .mqtt:
+            MQTTTab(settings: settings)
         case .advanced:
             AdvancedTab(settings: settings)
         case .autoMode:
@@ -125,7 +127,7 @@ struct SettingsView: View {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case general, display, notifications, webhook, advanced, autoMode, logs, about
+        case general, display, notifications, webhook, mqtt, advanced, autoMode, logs, about
         var id: String { rawValue }
 
         var title: String {
@@ -134,6 +136,7 @@ struct SettingsView: View {
             case .display: return "Display"
             case .notifications: return "Notifications"
             case .webhook: return "Webhook"
+            case .mqtt: return "MQTT"
             case .advanced: return "Advanced"
             case .autoMode: return "Auto Mode"
             case .logs: return "Logs"
@@ -147,6 +150,7 @@ struct SettingsView: View {
             case .display: return "macwindow"
             case .notifications: return "bell"
             case .webhook: return "antenna.radiowaves.left.and.right"
+            case .mqtt: return "point.3.connected.trianglepath.dotted"
             case .advanced: return "slider.horizontal.3"
             case .autoMode: return "checkmark.shield"
             case .logs: return "doc.text.magnifyingglass"
@@ -160,6 +164,7 @@ struct SettingsView: View {
             case .display: return "Choose what appears in the menu bar and popover"
             case .notifications: return "Usage alerts and thresholds"
             case .webhook: return "Send usage updates to another service"
+            case .mqtt: return "Configure your MQTT broker and delivery topic"
             case .advanced: return "Polling and display simulation"
             case .autoMode: return "Claude Code command classification rules"
             case .logs: return "Inspect Burnrate activity and errors"

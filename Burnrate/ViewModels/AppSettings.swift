@@ -53,6 +53,15 @@ final class AppSettings: ObservableObject {
     @Published var webhookEnabled: Bool { didSet { defaults.set(webhookEnabled, forKey: Keys.webhookEnabled) } }
     @Published var webhookURL: String { didSet { defaults.set(webhookURL, forKey: Keys.webhookURL) } }
 
+    // MQTT
+    @Published var mqttEnabled: Bool { didSet { defaults.set(mqttEnabled, forKey: Keys.mqttEnabled) } }
+    @Published var mqttHost: String { didSet { defaults.set(mqttHost, forKey: Keys.mqttHost) } }
+    @Published var mqttUsername: String { didSet { defaults.set(mqttUsername, forKey: Keys.mqttUsername) } }
+    @Published var mqttTopic: String { didSet { defaults.set(mqttTopic, forKey: Keys.mqttTopic) } }
+    /// Stored as plain text by user choice, to avoid Keychain authorization
+    /// prompts while using a local MQTT broker.
+    @Published var mqttPassword: String { didSet { defaults.set(mqttPassword, forKey: Keys.mqttPassword) } }
+
     // Debug / simulation (throwaway play feature — does not touch real quota)
     @Published var debugSimulate: Bool { didSet { defaults.set(debugSimulate, forKey: Keys.debugSimulate) } }
     @Published var debugSessionPercent: Double { didSet { defaults.set(debugSessionPercent, forKey: Keys.debugSessionPercent) } }
@@ -87,6 +96,23 @@ final class AppSettings: ObservableObject {
         use24HourClock = bool(Keys.use24HourClock, default: false)
         webhookEnabled = bool(Keys.webhookEnabled, default: false)
         webhookURL = store.string(forKey: Keys.webhookURL) ?? ""
+        let mqttHostValue = store.string(forKey: Keys.mqttHost) ?? ""
+        let mqttUsernameValue = store.string(forKey: Keys.mqttUsername) ?? ""
+        let mqttTopicValue = store.string(forKey: Keys.mqttTopic) ?? ""
+        mqttHost = mqttHostValue
+        mqttUsername = mqttUsernameValue
+        mqttTopic = mqttTopicValue
+        mqttPassword = store.string(forKey: Keys.mqttPassword) ?? ""
+        // Versions before persistent MQTT saved mqttEnabled as false while
+        // only offering a one-shot connection test. Enable existing broker
+        // configurations once; afterward the user's toggle always wins.
+        if !bool(Keys.mqttPersistentMigrationComplete, default: false) {
+            mqttEnabled = !mqttHostValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !mqttTopicValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            store.set(true, forKey: Keys.mqttPersistentMigrationComplete)
+        } else {
+            mqttEnabled = bool(Keys.mqttEnabled, default: true)
+        }
         debugSimulate = bool(Keys.debugSimulate, default: false)
         debugSessionPercent = double(Keys.debugSessionPercent, default: 40)
         debugWeeklyPercent = double(Keys.debugWeeklyPercent, default: 15)
@@ -108,6 +134,12 @@ final class AppSettings: ObservableObject {
         static let use24HourClock = "use24HourClock"
         static let webhookEnabled = "webhookEnabled"
         static let webhookURL = "webhookURL"
+        static let mqttHost = "mqttHost"
+        static let mqttEnabled = "mqttEnabled"
+        static let mqttUsername = "mqttUsername"
+        static let mqttTopic = "mqttTopic"
+        static let mqttPassword = "mqttPassword"
+        static let mqttPersistentMigrationComplete = "mqttPersistentMigrationComplete"
         static let debugSimulate = "debugSimulate"
         static let debugSessionPercent = "debugSessionPercent"
         static let debugWeeklyPercent = "debugWeeklyPercent"

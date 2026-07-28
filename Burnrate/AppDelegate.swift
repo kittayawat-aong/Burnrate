@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupStatusItem()
         setupPopover()
+        MQTTService.shared.configure(settings: settings)
 
         viewModel.onUpdate = { [weak self] in
             self?.updateStatusItem()
@@ -59,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] in
                 DispatchQueue.main.async {
                     self?.updateStatusItem()
+                    MQTTService.shared.configure(settings: self?.settings ?? .shared)
                 }
             }
             .store(in: &cancellables)
@@ -94,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popoverTickTimer?.invalidate()
         resetTimer?.invalidate()
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
+        MQTTService.shared.disconnect()
     }
 
     @objc private func didWakeFromSleep() {

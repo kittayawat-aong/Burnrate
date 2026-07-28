@@ -14,13 +14,14 @@ enum LogLevel: String, Codable {
 }
 
 enum LogCategory: String, Codable, CaseIterable {
-    case api, keychain, webhook, notification, settings, journal, account, polling, ui
+    case api, keychain, webhook, mqtt, notification, settings, journal, account, polling, ui
 
     var label: String {
         switch self {
         case .api: return "API"
         case .keychain: return "Keychain"
         case .webhook: return "Webhook"
+        case .mqtt: return "MQTT"
         case .notification: return "Notification"
         case .settings: return "Settings"
         case .journal: return "Journal"

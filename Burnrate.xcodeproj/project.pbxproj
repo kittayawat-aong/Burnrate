@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		E9A0D54CE71D95239886D8CD /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = A7B518B184D5F3D4EAFCF36B /* Alamofire */; };
+		A1F6E395A45B4AC9B50A3C01 /* MQTTNIO in Frameworks */ = {isa = PBXBuildFile; productRef = A1F6E395A45B4AC9B50A3C02 /* MQTTNIO */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E9A0D54CE71D95239886D8CD /* Alamofire in Frameworks */,
+				A1F6E395A45B4AC9B50A3C01 /* MQTTNIO in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +73,7 @@
 			name = Burnrate;
 			packageProductDependencies = (
 				A7B518B184D5F3D4EAFCF36B /* Alamofire */,
+				A1F6E395A45B4AC9B50A3C02 /* MQTTNIO */,
 			);
 			productName = Burnrate;
 			productReference = F1418ED32FF2B9F000270D11 /* Burnrate.app */;
@@ -102,6 +105,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				1453808C94D3B0B2249127A4 /* XCRemoteSwiftPackageReference "Alamofire" */,
+				A1F6E395A45B4AC9B50A3C03 /* XCRemoteSwiftPackageReference "mqtt-nio" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F1418ED42FF2B9F000270D11 /* Products */;
@@ -261,7 +265,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 34;
 				DEVELOPMENT_TEAM = 7HWCY4D34N;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -295,7 +299,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 34;
 				DEVELOPMENT_TEAM = 7HWCY4D34N;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -354,6 +358,14 @@
 				minimumVersion = 5.9.0;
 			};
 		};
+		A1F6E395A45B4AC9B50A3C03 /* XCRemoteSwiftPackageReference "mqtt-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swift-server-community/mqtt-nio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.13.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -361,6 +373,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1453808C94D3B0B2249127A4 /* XCRemoteSwiftPackageReference "Alamofire" */;
 			productName = Alamofire;
+		};
+		A1F6E395A45B4AC9B50A3C02 /* MQTTNIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1F6E395A45B4AC9B50A3C03 /* XCRemoteSwiftPackageReference "mqtt-nio" */;
+			productName = MQTTNIO;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
