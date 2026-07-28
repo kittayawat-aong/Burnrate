@@ -352,8 +352,17 @@ final class UsageViewModel: ObservableObject {
     }
 
     /// Returns true when the period has rolled over to a new window.
+    ///
+    /// A window with no usage yet (0%) gets its `resetsAt` re-estimated as
+    /// "now + full window duration" on every poll by some backends (observed
+    /// on Codex's account/rateLimits/read), so it drifts forward each call
+    /// without an actual reset happening. Requiring the previous deadline to
+    /// have already passed filters that drift out while still catching a
+    /// genuine reset, which by definition only becomes visible after its
+    /// `resetsAt` has elapsed.
     private func periodDidReset(prev: Date?, next: Date?) -> Bool {
         guard let prev, let next else { return false }
+        guard prev <= Date().addingTimeInterval(60) else { return false }
         return next.timeIntervalSince(prev) > 60
     }
 }
