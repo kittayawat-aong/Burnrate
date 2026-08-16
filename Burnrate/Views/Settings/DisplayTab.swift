@@ -20,6 +20,13 @@ struct DisplayTab: View {
                     color: .blue,
                     isOn: $settings.codexEnabled
                 )
+                sourceRow(
+                    title: "GLM (z.ai)",
+                    detail: "GLM Coding Plan usage via opencode’s saved key",
+                    symbol: "brain",
+                    color: .purple,
+                    isOn: $settings.glmEnabled
+                )
             } header: {
                 Text("Data sources")
             } footer: {
@@ -77,6 +84,10 @@ struct DisplayTab: View {
             return settings.codexEnabled
                 ? "Showing ChatGPT Codex usage beside the flame."
                 : "ChatGPT / Codex is disabled above. Enable it to show live usage."
+        case .glm:
+            return settings.glmEnabled
+                ? "Showing GLM (z.ai) usage beside the flame."
+                : "GLM is disabled above. Enable it to show live usage."
         }
     }
 

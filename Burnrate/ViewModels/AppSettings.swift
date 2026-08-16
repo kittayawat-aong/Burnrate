@@ -4,12 +4,14 @@ import Combine
 enum MenuBarProvider: String, CaseIterable, Identifiable {
     case claude
     case codex
+    case glm
 
     var id: String { rawValue }
     var title: String {
         switch self {
         case .claude: return "Claude"
         case .codex: return "ChatGPT"
+        case .glm: return "GLM"
         }
     }
 }
@@ -25,6 +27,9 @@ final class AppSettings: ObservableObject {
     // Providers
     @Published var claudeEnabled: Bool { didSet { defaults.set(claudeEnabled, forKey: Keys.claudeEnabled) } }
     @Published var codexEnabled: Bool { didSet { defaults.set(codexEnabled, forKey: Keys.codexEnabled) } }
+    /// Off by default: the key is only discoverable when opencode's
+    /// auth.json holds a z.ai coding-plan entry, which most users lack.
+    @Published var glmEnabled: Bool { didSet { defaults.set(glmEnabled, forKey: Keys.glmEnabled) } }
 
     // Menu bar
     @Published var menuBarShowSession: Bool { didSet { defaults.set(menuBarShowSession, forKey: Keys.menuBarShowSession) } }
@@ -81,6 +86,7 @@ final class AppSettings: ObservableObject {
         // didSet does not fire during init, so these are pure loads.
         claudeEnabled = bool(Keys.claudeEnabled, default: true)
         codexEnabled = bool(Keys.codexEnabled, default: true)
+        glmEnabled = bool(Keys.glmEnabled, default: false)
         menuBarShowSession = bool(Keys.menuBarShowSession, default: true)
         menuBarShowCountdown = bool(Keys.menuBarShowCountdown, default: true)
         menuBarShowWeekly = bool(Keys.menuBarShowWeekly, default: false)
@@ -121,6 +127,7 @@ final class AppSettings: ObservableObject {
     private enum Keys {
         static let claudeEnabled = "claudeEnabled"
         static let codexEnabled = "codexEnabled"
+        static let glmEnabled = "glmEnabled"
         static let menuBarShowSession = "menuBarShowSession"
         static let menuBarShowCountdown = "menuBarShowCountdown"
         static let menuBarShowWeekly = "menuBarShowWeekly"

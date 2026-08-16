@@ -68,4 +68,17 @@ extension UsagePopover {
             }
         }
     }
+
+    func glmPlanSection(_ plan: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top, spacing: 8) {
+                Text("Plan")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer(minLength: 8)
+                Text(plan.capitalized)
+                    .font(.caption)
+            }
+        }
+    }
 }

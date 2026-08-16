@@ -32,4 +32,17 @@ extension UsagePopover {
         formatter.numberStyle = .decimal
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
+
+    /// GLM token totals per model over the last 24 hours, from z.ai's
+    /// model-usage monitor endpoint.
+    func glmTokenBreakdown(_ models: [GLMModelUsage], total: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Tokens (last 24h)")
+                .font(.subheadline.weight(.medium))
+            ForEach(models) { model in
+                tokenLine(model.name, model.tokens)
+            }
+            tokenLine("Total", total, bold: true)
+        }
+    }
 }

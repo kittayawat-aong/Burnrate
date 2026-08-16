@@ -3,7 +3,7 @@ import SwiftUI
 /// The session/weekly usage bars, plus the stale-data and hard-error states
 /// shown in their place when a fetch has failed.
 extension UsagePopover {
-    func periodRow(title: String, period: UsagePeriod?) -> some View {
+    func periodRow(title: String, period: UsagePeriod?, caption: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(title)
@@ -20,6 +20,12 @@ extension UsagePopover {
             Text(resetText(for: period))
                 .font(.caption)
                 .foregroundColor(.secondary)
+
+            if let caption {
+                Text(caption)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 

@@ -63,6 +63,30 @@ struct UsagePopover: View {
                 }
             }
 
+            if settings.glmEnabled {
+                Divider()
+                providerHeader("GLM (z.ai)", symbol: "brain", color: .purple)
+
+                if settings.popoverShowAccount, let plan = viewModel.glmPlan {
+                    glmPlanSection(plan)
+                }
+
+                if let error = viewModel.glmErrorMessage, viewModel.glmLimits.isEmpty {
+                    errorState(error)
+                } else {
+                    if let error = viewModel.glmErrorMessage {
+                        staleNote(error)
+                    }
+                    ForEach(viewModel.glmLimits) { limit in
+                        periodRow(title: limit.label, period: limit.period, caption: limit.creditsText)
+                    }
+
+                    if settings.popoverShowTokens, viewModel.glmTotalTokens > 0 {
+                        glmTokenBreakdown(viewModel.glmModels, total: viewModel.glmTotalTokens)
+                    }
+                }
+            }
+
             Divider()
 
             footer

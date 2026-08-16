@@ -83,9 +83,7 @@ final class MQTTService: ObservableObject {
         status = .disconnected
 
         guard let client else { return }
-        Task {
-            try? await client.shutdown()
-        }
+        shutdown(client)
     }
 
     private func startConnection(using configuration: Configuration) {
@@ -160,9 +158,7 @@ final class MQTTService: ObservableObject {
         self.client = nil
         status = .failed("Connection failed: \(error.localizedDescription)")
         LogService.shared.log(.error, .mqtt, "Connection failed: \(error.localizedDescription)")
-        Task {
-            try? await client.shutdown()
-        }
+        shutdown(client)
         scheduleReconnect(configuration: configuration)
     }
 
@@ -171,6 +167,9 @@ final class MQTTService: ObservableObject {
         self.client = nil
         listenerTask?.cancel()
         listenerTask = nil
+        // MQTTNIO owns an event loop and requires shutdown even when the broker
+        // closed the connection. Retain the client until that shutdown finishes.
+        shutdown(client)
 
         let reason: String
         switch result {
@@ -188,6 +187,12 @@ final class MQTTService: ObservableObject {
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled, let self, self.activeConfiguration == configuration, self.client == nil else { return }
             self.startConnection(using: configuration)
+        }
+    }
+
+    private func shutdown(_ client: MQTTClient) {
+        Task { [client] in
+            try? await client.shutdown()
         }
     }
 

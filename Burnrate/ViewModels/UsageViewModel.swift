@@ -29,10 +29,17 @@ final class UsageViewModel: ObservableObject {
     @Published private(set) var codexLastUpdated: Date?
     @Published private(set) var codexErrorMessage: String?
     @Published private(set) var isCodexLoading = false
+    @Published private(set) var glmLimits: [GLMUsageLimit] = []
+    @Published private(set) var glmPlan: String?
+    @Published private(set) var glmModels: [GLMModelUsage] = []
+    @Published private(set) var glmTotalTokens = 0
+    @Published private(set) var glmLastUpdated: Date?
+    @Published private(set) var glmErrorMessage: String?
+    @Published private(set) var isGLMLoading = false
 
-    var isAnyLoading: Bool { isLoading || isCodexLoading }
+    var isAnyLoading: Bool { isLoading || isCodexLoading || isGLMLoading }
     var mostRecentUpdate: Date? {
-        [lastUpdated, codexLastUpdated].compactMap { $0 }.max()
+        [lastUpdated, codexLastUpdated, glmLastUpdated].compactMap { $0 }.max()
     }
 
     /// Called after any state change so AppKit (status item) can redraw.
@@ -50,6 +57,13 @@ final class UsageViewModel: ObservableObject {
             codexLimits = cached.snapshot.limits
             codexAccount = cached.snapshot.account
             codexLastUpdated = cached.lastUpdated
+        }
+        if let cached = GLMUsageCache.load() {
+            glmLimits = cached.snapshot.limits
+            glmPlan = cached.snapshot.plan
+            glmModels = cached.snapshot.tokensLast24h
+            glmTotalTokens = cached.snapshot.totalTokensLast24h
+            glmLastUpdated = cached.lastUpdated
         }
     }
 
@@ -85,6 +99,7 @@ final class UsageViewModel: ObservableObject {
     private var notifiedSessionPeriod: Date?
     private var notifiedWeeklyPeriod: Date?
     private var notifiedCodexPeriods: [String: Date] = [:]
+    private var notifiedGLMPeriods: [String: Date] = [:]
 
     // Set when a refresh ends in .tokenExpired: the Keychain item's
     // modification date at that moment. While the item stays unchanged a
@@ -237,6 +252,47 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
+    /// Refreshes GLM (z.ai coding plan) independently. The API key is
+    /// borrowed read-only from opencode's auth.json; Burnrate never rotates
+    /// or writes it back.
+    func refreshGLM() async -> Bool {
+        isGLMLoading = true
+        notifyUpdate()
+        defer {
+            isGLMLoading = false
+            notifyUpdate()
+        }
+
+        do {
+            let previous = Dictionary(uniqueKeysWithValues: glmLimits.map { ($0.id, $0.period.resetsAt) })
+            let snapshot = try await GLMUsageService.fetch()
+            glmLimits = snapshot.limits
+            glmPlan = snapshot.plan
+            glmModels = snapshot.tokensLast24h
+            glmTotalTokens = snapshot.totalTokensLast24h
+            glmLastUpdated = Date()
+            glmErrorMessage = nil
+            GLMUsageCache.save(snapshot, lastUpdated: glmLastUpdated!)
+
+            for limit in snapshot.limits {
+                if periodDidReset(prev: previous[limit.id] ?? nil, next: limit.period.resetsAt) {
+                    notifiedGLMPeriods[limit.id] = nil
+                    NotificationService.send(
+                        title: "GLM usage reset",
+                        body: "\(limit.label) has reset — you're back to 0%."
+                    )
+                }
+            }
+            runGLMThresholdCheck()
+            LogService.shared.log(.info, .polling, "GLM refresh succeeded — \(snapshot.limits.map { "\($0.label) \(Int($0.period.utilization))%" }.joined(separator: ", "))")
+            return true
+        } catch {
+            glmErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            LogService.shared.log(.error, .glm, "GLM refresh failed: \(glmErrorMessage ?? "unknown error")")
+            return false
+        }
+    }
+
     private func notifyUpdate() {
         onUpdate?()
     }
@@ -311,6 +367,7 @@ final class UsageViewModel: ObservableObject {
             notifiedPeriod: &notifiedWeeklyPeriod
         )
         runCodexThresholdCheck()
+        runGLMThresholdCheck()
     }
 
     private func runCodexThresholdCheck() {
@@ -329,6 +386,25 @@ final class UsageViewModel: ObservableObject {
                 body: "\(limit.label) is at \(Int(limit.period.utilization))%."
             )
             notifiedCodexPeriods[limit.id] = periodKey
+        }
+    }
+
+    private func runGLMThresholdCheck() {
+        let settings = AppSettings.shared
+        guard settings.notifyEnabled, settings.glmEnabled else { return }
+
+        for limit in glmLimits {
+            guard limit.period.utilization >= settings.notifyThreshold else { continue }
+            let raw = limit.period.resetsAt ?? .distantFuture
+            let periodKey = Date(timeIntervalSinceReferenceDate:
+                (raw.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60)
+            guard notifiedGLMPeriods[limit.id] != periodKey else { continue }
+
+            NotificationService.send(
+                title: "GLM usage high",
+                body: "\(limit.label) is at \(Int(limit.period.utilization))%."
+            )
+            notifiedGLMPeriods[limit.id] = periodKey
         }
     }
 

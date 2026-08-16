@@ -153,6 +153,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("sparkles", .systemOrange, "Claude usage")
         case .codex:
             ("terminal.fill", .systemBlue, "ChatGPT Codex usage")
+        case .glm:
+            ("brain", .systemPurple, "GLM usage")
         }
         let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
             .applying(.init(paletteColors: [color]))
@@ -218,11 +220,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // GLM limits are sorted soonest-reset first, so `first` is the
+        // active session window — same convention as Codex.
+        if settings.menuBarProvider == .glm,
+           settings.glmEnabled,
+           let glm = viewModel.glmLimits.first {
+            if settings.menuBarShowSession {
+                title.append(segment("\(Int(glm.period.utilization))%", color: UsageColor.nsColor(for: glm.period.utilization)))
+            }
+            if settings.menuBarShowCountdown, let resetsAt = glm.period.resetsAt {
+                let prefix = settings.menuBarShowSession ? " · " : ""
+                title.append(segment(prefix + TimeFormatter.compactCountdown(to: resetsAt), color: .secondaryLabelColor))
+            }
+        }
+
         // Nothing to show (no data yet, or all toggles off with no data).
         if title.length <= 1 {
-            if viewModel.effectiveSession == nil && viewModel.effectiveWeekly == nil && viewModel.codexLimits.isEmpty {
+            if viewModel.effectiveSession == nil && viewModel.effectiveWeekly == nil && viewModel.codexLimits.isEmpty && viewModel.glmLimits.isEmpty {
                 let hasError = (settings.claudeEnabled && viewModel.errorMessage != nil)
                     || (settings.codexEnabled && viewModel.codexErrorMessage != nil)
+                    || (settings.glmEnabled && viewModel.glmErrorMessage != nil)
                 let symbol = hasError && !viewModel.isAnyLoading ? "⚠︎" : "…"
                 title.append(segment(symbol, color: .secondaryLabelColor))
             }
@@ -255,10 +272,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 lines.append("Codex \(limit.label): \(Int(limit.period.utilization))%")
             }
         }
+        if settings.glmEnabled {
+            for limit in viewModel.glmLimits {
+                lines.append("GLM \(limit.label): \(Int(limit.period.utilization))%")
+            }
+        }
         if settings.claudeEnabled, let error = viewModel.errorMessage {
             lines.append(error)
         }
         if settings.codexEnabled, let error = viewModel.codexErrorMessage {
+            lines.append(error)
+        }
+        if settings.glmEnabled, let error = viewModel.glmErrorMessage {
             lines.append(error)
         }
         return lines.joined(separator: "\n")
@@ -371,9 +396,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let codexTask = settings.codexEnabled
                 ? Task { @MainActor in await viewModel.refreshCodex() }
                 : nil
+            let glmTask = settings.glmEnabled
+                ? Task { @MainActor in await viewModel.refreshGLM() }
+                : nil
 
             let outcome = await claudeTask?.value ?? .success
             let codexSucceeded = await codexTask?.value ?? false
+            let glmSucceeded = await glmTask?.value ?? false
             let next: TimeInterval
             if case .rateLimited(let retryAfter) = outcome {
                 next = min(max(retryAfter ?? backoffInterval, backoffInterval), maxBackoffInterval)
@@ -382,7 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 next = normalInterval
             }
             scheduleNext(after: next)
-            if outcome == .success || codexSucceeded {
+            if outcome == .success || codexSucceeded || glmSucceeded {
                 scheduleResetTimer()
             }
         }
@@ -401,7 +430,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let codexDates = settings.codexEnabled
             ? viewModel.codexLimits.compactMap(\.period.resetsAt)
             : []
-        let dates = claudeDates + codexDates
+        let glmDates = settings.glmEnabled
+            ? viewModel.glmLimits.compactMap(\.period.resetsAt)
+            : []
+        let dates = claudeDates + codexDates + glmDates
         guard let soonest = dates.min(), soonest.timeIntervalSinceNow > 0 else { return }
 
         LogService.shared.log(.debug, .polling, "Reset timer armed for \(Self.logFormatter.string(from: soonest)) (in \(Int(soonest.timeIntervalSinceNow))s)")
