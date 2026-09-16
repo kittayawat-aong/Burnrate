@@ -210,7 +210,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if settings.menuBarProvider == .codex,
            settings.codexEnabled,
-           let codex = viewModel.codexLimits.first {
+           let codex = viewModel.codexLimits.first(where: { $0.id.hasPrefix("codex-0-") })
+                ?? viewModel.codexLimits.first {
             if settings.menuBarShowSession {
                 title.append(segment("\(Int(codex.period.utilization))%", color: UsageColor.nsColor(for: codex.period.utilization)))
             }
