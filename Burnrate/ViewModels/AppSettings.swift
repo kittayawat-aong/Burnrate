@@ -67,6 +67,14 @@ final class AppSettings: ObservableObject {
     /// prompts while using a local MQTT broker.
     @Published var mqttPassword: String { didSet { defaults.set(mqttPassword, forKey: Keys.mqttPassword) } }
 
+    // Keep awake
+    @Published var caffeinateMode: CaffeinateMode {
+        didSet {
+            defaults.set(caffeinateMode.rawValue, forKey: Keys.caffeinateMode)
+            CaffeinateService.shared.updateMode(caffeinateMode)
+        }
+    }
+
     // Debug / simulation (throwaway play feature — does not touch real quota)
     @Published var debugSimulate: Bool { didSet { defaults.set(debugSimulate, forKey: Keys.debugSimulate) } }
     @Published var debugSessionPercent: Double { didSet { defaults.set(debugSessionPercent, forKey: Keys.debugSessionPercent) } }
@@ -119,6 +127,9 @@ final class AppSettings: ObservableObject {
         } else {
             mqttEnabled = bool(Keys.mqttEnabled, default: true)
         }
+        caffeinateMode = CaffeinateMode(
+            rawValue: store.string(forKey: Keys.caffeinateMode) ?? ""
+        ) ?? .system
         debugSimulate = bool(Keys.debugSimulate, default: false)
         debugSessionPercent = double(Keys.debugSessionPercent, default: 40)
         debugWeeklyPercent = double(Keys.debugWeeklyPercent, default: 15)
@@ -147,6 +158,7 @@ final class AppSettings: ObservableObject {
         static let mqttTopic = "mqttTopic"
         static let mqttPassword = "mqttPassword"
         static let mqttPersistentMigrationComplete = "mqttPersistentMigrationComplete"
+        static let caffeinateMode = "caffeinateMode"
         static let debugSimulate = "debugSimulate"
         static let debugSessionPercent = "debugSessionPercent"
         static let debugWeeklyPercent = "debugWeeklyPercent"

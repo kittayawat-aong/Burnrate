@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct GeneralTab: View {
+    @ObservedObject private var settings = AppSettings.shared
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @ObservedObject private var claudeSettings = ClaudeSettingsService.shared
 
@@ -15,6 +16,18 @@ struct GeneralTab: View {
                     }
             } footer: {
                 captionFooter("Start Burnrate automatically when you log in.")
+            }
+
+            Section {
+                Picker("Mode", selection: $settings.caffeinateMode) {
+                    ForEach(CaffeinateMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+            } header: {
+                Text("Keep Awake")
+            } footer: {
+                captionFooter("Start keep-awake from the ☕ button in the popover. Closing the lid still sleeps the Mac unless an external display and power are connected.")
             }
 
             Section {

@@ -65,6 +65,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        CaffeinateService.shared.objectWillChange
+            .sink { [weak self] in
+                DispatchQueue.main.async { self?.updateStatusItem() }
+            }
+            .store(in: &cancellables)
+
         updateStatusItem()
         poll() // initial fetch (also schedules the next poll)
         startDisplayTimer()
@@ -97,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         resetTimer?.invalidate()
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
         MQTTService.shared.disconnect()
+        CaffeinateService.shared.stop()
     }
 
     @objc private func didWakeFromSleep() {
@@ -246,6 +253,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Keep-awake indicator, independent of the selected provider.
+        if CaffeinateService.shared.isActive {
+            title.append(segment(" ☕", color: .labelColor))
+        }
+
         button.attributedTitle = title
         button.toolTip = tooltip()
     }
@@ -276,6 +288,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settings.glmEnabled {
             for limit in viewModel.glmLimits {
                 lines.append("GLM \(limit.label): \(Int(limit.period.utilization))%")
+            }
+        }
+        if CaffeinateService.shared.isActive {
+            if let end = CaffeinateService.shared.endsAt {
+                lines.append("Keep awake until \(TimeFormatter.clock(end, use24Hour: settings.use24HourClock))")
+            } else {
+                lines.append("Keep awake on")
             }
         }
         if settings.claudeEnabled, let error = viewModel.errorMessage {

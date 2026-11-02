@@ -29,8 +29,8 @@ open /Applications/Burnrate.app
 
 ## Versioning
 
-- `CURRENT_PROJECT_VERSION` (build number, currently 36) — bump on every commit that changes app code. Appears twice in `project.pbxproj` (Debug + Release); keep in sync.
-- `MARKETING_VERSION` (currently 1.0.7) — user-controlled; do not bump unless asked.
+- `CURRENT_PROJECT_VERSION` (build number, currently 37) — bump on every commit that changes app code. Appears twice in `project.pbxproj` (Debug + Release); keep in sync.
+- `MARKETING_VERSION` (currently 1.0.10) — user-controlled; do not bump unless asked.
 
 ## Architecture
 
@@ -53,6 +53,7 @@ Burnrate/
 │   ├── JournalService.swift     # parses ~/.claude/projects/**/*.jsonl for today's tokens
 │   ├── ClaudeSettingsService.swift # reads AND writes ~/.claude/settings.json (autoMode config)
 │   ├── MQTTService.swift        # persistent MQTTNIO client, auto-reconnect, subscribes to one topic
+│   ├── CaffeinateService.swift  # keep-awake via IOKit power assertion (no caffeinate subprocess)
 │   ├── LogService.swift         # in-app activity log → os.Logger + ~/Library/Logs/Burnrate/ daily files
 │   ├── NotificationService.swift
 │   ├── WebhookService.swift     # POSTs usage JSON after each successful fetch

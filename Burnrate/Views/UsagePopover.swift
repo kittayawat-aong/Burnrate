@@ -6,6 +6,7 @@ import SwiftUI
 struct UsagePopover: View {
     @ObservedObject var viewModel: UsageViewModel
     @ObservedObject var settings: AppSettings
+    @ObservedObject var caffeinate = CaffeinateService.shared
 
     var onRefresh: () -> Void
     var onOpenSettings: () -> Void
