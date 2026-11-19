@@ -379,7 +379,7 @@ final class UsageViewModel: ObservableObject {
             let raw = limit.period.resetsAt ?? .distantFuture
             let periodKey = Date(timeIntervalSinceReferenceDate:
                 (raw.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60)
-            guard notifiedCodexPeriods[limit.id] != periodKey else { continue }
+            guard !isSamePeriod(notifiedCodexPeriods[limit.id], periodKey) else { continue }
 
             NotificationService.send(
                 title: "Codex usage high",
@@ -398,7 +398,7 @@ final class UsageViewModel: ObservableObject {
             let raw = limit.period.resetsAt ?? .distantFuture
             let periodKey = Date(timeIntervalSinceReferenceDate:
                 (raw.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60)
-            guard notifiedGLMPeriods[limit.id] != periodKey else { continue }
+            guard !isSamePeriod(notifiedGLMPeriods[limit.id], periodKey) else { continue }
 
             NotificationService.send(
                 title: "GLM usage high",
@@ -418,13 +418,25 @@ final class UsageViewModel: ObservableObject {
         let raw = period?.resetsAt ?? .distantFuture
         let periodKey = Date(timeIntervalSinceReferenceDate:
             (raw.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60)
-        guard notifiedPeriod != periodKey else { return }
+        guard !isSamePeriod(notifiedPeriod, periodKey) else { return }
 
         NotificationService.send(
             title: "Claude usage high",
             body: "\(window) is at \(Int(utilization))%."
         )
         notifiedPeriod = periodKey
+    }
+
+    /// True when `notified` and `current` are the same usage period.
+    ///
+    /// The API's `resetsAt` jitters by under a second across polls (e.g. 22:00:00
+    /// vs 21:59:59.52), which can straddle a minute boundary, so exact or
+    /// minute-truncated equality produced a "new period" and repeat alerts.
+    /// A real new period differs by hours/days, so a few minutes of tolerance is safe.
+    private func isSamePeriod(_ notified: Date?, _ current: Date) -> Bool {
+        guard let notified else { return false }
+        let tolerance: TimeInterval = 5 * 60
+        return abs(notified.timeIntervalSince(current)) < tolerance
     }
 
     /// Returns true when the period has rolled over to a new window.

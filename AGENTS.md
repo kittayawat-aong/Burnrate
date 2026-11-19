@@ -28,8 +28,8 @@ open /Applications/Burnrate.app
 
 ## Versioning
 
-- `CURRENT_PROJECT_VERSION` (build number, currently 37) — bump on every commit that changes app code. Appears twice in `project.pbxproj` (Debug + Release); keep in sync.
-- `MARKETING_VERSION` (currently 1.0.10) — user-controlled; do not bump unless asked.
+- `CURRENT_PROJECT_VERSION` (build number, currently 38) — bump on every commit that changes app code. Appears twice in `project.pbxproj` (Debug + Release); keep in sync.
+- `MARKETING_VERSION` (currently 1.0.11) — user-controlled; do not bump unless asked.
 
 ## Architecture
 
